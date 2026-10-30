@@ -75,7 +75,7 @@ shadowmap/
 ## 6. How to run
 
 - First time only: `cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && cp .env.example .env`, and `cd frontend && npm install`.
-- Everything at once: `./start.sh` from the project folder (Ctrl+C stops both). Open http://localhost:5173.
+- Everything at once: `./start.sh` from the project folder (Ctrl+C stops both). Open http://localhost:5173 (this laptop only).
 - Separately: backend `cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000`; frontend `cd frontend && npm run dev`. Vite forwards `/api` and `/ws` to port 8000.
 - Map data: `cd backend && .venv/bin/python -m scripts.build_map` (offline, from `assets/demo-data/`). `scripts.fetch_osm` downloads from Overpass only when asked.
 - Backend tests: `cd backend && .venv/bin/pytest`
@@ -100,6 +100,13 @@ Map and place rules (owner decisions, 2026-10-30):
 - **Never call a place "safe"** because of its category. Use neutral words ("place", "help point", "places passed (not closed)").
 - **Google Places content is never drawn on the Leaflet/OSM map, never merged with our places, never stored or cached** (only place IDs may be kept; we keep none). Shown only in the separate list with "Google Maps" attribution and "Open in Google Maps" links. Key only in `backend/.env`. Without a key everything else must work.
 - Team-verified places go in `assets/demo-data/manual_places.json` (who, when, how) — never copied from Google.
+
+Sentinel security rules (audit 2026-10-30, `docs/SECURITY_AUDIT_M05_M07.md`):
+- Every `/api/sentinel/*` endpoint except `/status` needs the access code (`SENTINEL_TOKEN`, header `X-Sentinel-Token`). New Sentinel endpoints must use `dependencies=PROTECTED`.
+- Night and moving rules are enforced by the server, not only the browser. Never trust the browser alone for a rule.
+- Photos and videos are never served without blurring (M6). `assets/videos/` is git-ignored and never modified.
+- A failed job must leave nothing half-done. Every stored photo/video has a delete time.
+- `npm run dev` is local-only; `npm run dev:lan` exposes the app to the network — use only when needed.
 
 ## 8. Key numbers (from BLUEPRINT.md — keep them in `backend/app/config.py`, not scattered)
 

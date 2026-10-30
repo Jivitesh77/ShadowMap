@@ -1,5 +1,6 @@
 """Sentinel live photos and the video pipeline, on generated test clips (never real footage or demo data)."""
 
+import os
 import subprocess
 from datetime import datetime
 
@@ -45,7 +46,7 @@ def env(tmp_path, monkeypatch, clip):
                               start_node=880002, end_node=880003, length_m=222.4, geometry=[B, C]),
             ])
             db.commit()
-    with TestClient(app) as client:
+    with TestClient(app, headers={"X-Sentinel-Token": os.environ["SENTINEL_TOKEN"]}) as client:
         yield client, tmp_path
 
 

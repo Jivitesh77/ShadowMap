@@ -14,8 +14,11 @@ cd ~/Projects/shadowmap
 ./start.sh
 ```
 
-Then open **http://localhost:5173** in your browser.
+Then open **http://localhost:5173** in your browser (works on this laptop only).
 Press `Ctrl + C` once in that terminal to stop everything.
+
+The **Sentinel** page asks for an access code. It is in `backend/.env`; show it with `grep SENTINEL_TOKEN ~/Projects/shadowmap/backend/.env`.
+To test Live mode in daytime or on foot, set `SENTINEL_ENFORCE_NIGHT=false` / `SENTINEL_ENFORCE_MOVING=false` in `backend/.env` and restart (set back to `true` afterwards).
 
 Notes:
 - `http://localhost:8000` is the backend. It has no screens; it only answers the app's data requests.

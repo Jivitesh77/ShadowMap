@@ -7,6 +7,7 @@ assumed) — a video without a per-frame GPS track is never presented as having 
 
 import logging
 import threading
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -29,13 +30,41 @@ def frame_path(job_id: int, index: int) -> Path:
 
 
 def _clear_job_output(db, job: models.VideoJob) -> None:
-    """Remove observations and frame files a previous, interrupted run of this job created."""
+    """Remove observations and frame files of this job (an interrupted or failed run), including half-written frames."""
     for o in db.scalars(select(models.Observation).where(models.Observation.video_job_id == job.id)).all():
         if o.photo_path:
             Path(o.photo_path).unlink(missing_ok=True)
         db.delete(o)
+    for f in config.PHOTO_DIR.glob(f"video{job.id}_f*.jpg"):
+        f.unlink(missing_ok=True)
     job.frames_done = 0
     job.frames_on_streets = 0
+
+
+def _fail(job_id: int, message: str) -> None:
+    """Mark a job failed and leave nothing half-done behind: no frames, no observations."""
+    with SessionLocal() as db:
+        job = db.get(models.VideoJob, job_id)
+        _clear_job_output(db, job)
+        job.status, job.stage, job.error, job.finished_at = "failed", None, message, utcnow()
+        if job.source_kind == "upload":
+            job.file_delete_at = utcnow() + timedelta(hours=config.PHOTO_KEEP_HOURS)
+        db.commit()
+
+
+def cleanup_orphan_uploads() -> list[str]:
+    """Delete uploaded videos older than ORPHAN_UPLOAD_HOURS that never became a job (e.g. the user left the page)."""
+    if not config.VIDEO_DIR.is_dir():
+        return []
+    with SessionLocal() as db:
+        used = {Path(p).name for p in db.scalars(select(models.VideoJob.file_path).where(models.VideoJob.source_kind == "upload")).all()}
+    cutoff = time.time() - config.ORPHAN_UPLOAD_HOURS * 3600
+    removed = []
+    for f in config.VIDEO_DIR.glob("upload_*"):
+        if f.name not in used and f.stat().st_mtime < cutoff:
+            f.unlink(missing_ok=True)
+            removed.append(f.name)
+    return removed
 
 
 def process_job(job_id: int) -> None:
@@ -90,18 +119,16 @@ def process_job(job_id: int) -> None:
                 db.commit()
 
             job.status, job.stage, job.finished_at = "done", "waiting for AI analysis", utcnow()
+            if job.source_kind == "upload":
+                job.file_delete_at = job.finished_at + timedelta(hours=config.PHOTO_KEEP_HOURS)
             db.commit()
         except (VideoError, RouteError) as err:
             db.rollback()
-            job = db.get(models.VideoJob, job_id)
-            job.status, job.stage, job.error = "failed", None, err.message
-            db.commit()
+            _fail(job_id, err.message)
         except Exception as err:  # unexpected: record it so the job does not stay "processing" forever
             log.exception("video job %s failed", job_id)
             db.rollback()
-            job = db.get(models.VideoJob, job_id)
-            job.status, job.stage, job.error = "failed", None, f"Unexpected error: {type(err).__name__}"
-            db.commit()
+            _fail(job_id, f"Unexpected error: {type(err).__name__}")
 
 
 class VideoWorker:
@@ -111,6 +138,9 @@ class VideoWorker:
         self._thread = threading.Thread(target=self._run, name="video-worker", daemon=True)
 
     def start(self) -> None:
+        removed = cleanup_orphan_uploads()
+        if removed:
+            log.info("removed %d abandoned video uploads", len(removed))
         with SessionLocal() as db:  # jobs interrupted by a restart go back in the queue
             for job in db.scalars(select(models.VideoJob).where(models.VideoJob.status == "processing")).all():
                 job.status, job.stage = "queued", "restarting after interruption"

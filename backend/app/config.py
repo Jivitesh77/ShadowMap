@@ -62,3 +62,13 @@ START_WORKERS = _bool("START_WORKERS", True)  # background video queue; tests tu
 LIVE_MAX_GPS_ACCURACY_M = 50  # ignore readings with poorer accuracy (blueprint §20)
 LIVE_DUPLICATE_RADIUS_M = 30  # blueprint §5: no new photo within ~30 m of the last one
 LIVE_MAX_IMAGE_BYTES = 1_500_000
+# Access code for all Sentinel endpoints except /status (photos, videos, rider routes). Only in backend/.env.
+# Empty = Sentinel writes are switched off until one is set.
+SENTINEL_TOKEN = os.getenv("SENTINEL_TOKEN", "").strip()
+# Blueprint §5 rules, enforced by the server too (not only the browser). Switch off in .env only for daytime/on-foot testing.
+SENTINEL_ENFORCE_NIGHT = _bool("SENTINEL_ENFORCE_NIGHT", True)
+SENTINEL_ENFORCE_MOVING = _bool("SENTINEL_ENFORCE_MOVING", True)
+NIGHT_START_HOUR, NIGHT_END_HOUR = 18, 6  # India time
+MIN_MOVING_KMH = 5
+MAX_PLAUSIBLE_KMH = 150  # faster than this between two photos = GPS jump or spoofed position
+ORPHAN_UPLOAD_HOURS = 24  # uploaded videos never turned into a job are removed after this

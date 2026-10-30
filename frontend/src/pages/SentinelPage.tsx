@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { api } from '../api'
+import { api, ApiError } from '../api'
+import { getAccessCode, setAccessCode } from '../lib/sentinelAccess'
+import { ErrorState } from '../components/States'
 import { useApi } from '../hooks/useApi'
 import { LiveSentinel } from '../components/LiveSentinel'
 import { VideoSentinel } from '../components/VideoSentinel'
@@ -7,8 +9,45 @@ import { Badge, PageHeader } from '../components/Ui'
 
 type Mode = 'video' | 'live'
 
+// Sentinel data (photos, videos, rider routes) is only for the team: ask for the access code once.
+function AccessGate({ onOk }: { onOk: () => void }) {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [checking, setChecking] = useState(false)
+  const check = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setChecking(true)
+    setError(null)
+    setAccessCode(code.trim())
+    try {
+      await api.videoJobs()
+      onOk()
+    } catch (err) {
+      setAccessCode(null)
+      setError((err as ApiError).message)
+    } finally {
+      setChecking(false)
+    }
+  }
+  return (
+    <form onSubmit={check} className="mx-auto max-w-md space-y-3 rounded-2xl border border-ink-700 bg-ink-850 p-5">
+      <h2 className="text-lg font-semibold">Sentinel access code</h2>
+      <p className="text-sm text-ink-300">
+        Sentinel photos, videos and rider routes are only for the ShadowMap team. The code is set in <code>backend/.env</code> (SENTINEL_TOKEN).
+      </p>
+      <input type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Sentinel access code"
+        className="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2" />
+      {error && <ErrorState title="Not accepted" message={error} />}
+      <button disabled={!code.trim() || checking} className="w-full rounded-xl bg-beacon-400 px-4 py-2.5 font-semibold text-ink-950 disabled:opacity-40">
+        {checking ? 'Checking…' : 'Continue'}
+      </button>
+    </form>
+  )
+}
+
 export default function SentinelPage() {
   const [mode, setMode] = useState<Mode>('video')
+  const [unlocked, setUnlocked] = useState(() => !!getAccessCode())
   const status = useApi(api.sentinelStatus, 5000)
   const pending = status.data?.observations_by_analysis.pending ?? 0
 
@@ -27,6 +66,10 @@ export default function SentinelPage() {
         }
       />
 
+      {!unlocked ? (
+        <AccessGate onOk={() => setUnlocked(true)} />
+      ) : (
+      <>
       <div role="tablist" aria-label="Sentinel mode" className="inline-flex rounded-xl border border-ink-700 bg-ink-900 p-1">
         {(
           [
@@ -47,6 +90,11 @@ export default function SentinelPage() {
       </div>
 
       {mode === 'video' ? <VideoSentinel /> : <LiveSentinel />}
+      <button onClick={() => { setAccessCode(null); setUnlocked(false) }} className="text-xs text-ink-400 underline">
+        Forget the access code on this device
+      </button>
+      </>
+      )}
     </div>
   )
 }

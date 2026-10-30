@@ -145,3 +145,10 @@ Checks run:
 
 Fixed during testing: error messages with a code were shown as "Server error (422)" (also affected route errors); uploaded videos showed an internal file name; trace map tiles not darkened.
 Still to do: run the owner's real night videos (testing phase); live mode on a real phone over https (M12).
+
+### 2026-10-30 — Security and correctness audit of M5 + M7 (Done, verified)
+Full report: `docs/SECURITY_AUDIT_M05_M07.md`. Tests written first: 7 of 9 failed on the old code; all pass after fixes. `pytest`: 63 passed.
+Fixed: **High** — no access control + dev server on the whole network (access code on all Sentinel endpoints except status; `npm run dev` local-only, `dev:lan` opt-in). **Medium** — night and moving rules now enforced by the server; impossible GPS jumps rejected; failed video jobs leave no frames/observations; rider routes no longer public; uploaded videos get a delete time, abandoned uploads removed, `assets/videos` git-ignored. **Low** — explicit lock for duplicates (8 simultaneous uploads → 1 saved); no false GPS-jump on queued uploads.
+Checked fine: photos/videos/DB/.env not downloadable (Vite /@fs → 403; backend on 127.0.0.1); delete keeps DB consistent; retention fields ready for M6.
+Live checks on the owner's app: no code → 401, wrong → 403, right → 200, status public; daytime photo with the right code refused (`outside_hours`); 0 observations in the database; access screen in the browser refuses a wrong code and opens with the right one.
+Owner action: restart `./start.sh` (frontend now local-only); the access code is in `backend/.env`.

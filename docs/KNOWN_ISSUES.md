@@ -17,7 +17,7 @@ Status values: Open · Workaround · Resolved · Accepted (stays for the demo, e
 | 9 | **Police dashboard and partner fleets are simulated** (blueprint §15). | Must be stated openly. | Accepted | Labels on screen: "Simulated — no connection to real police". Sentinels named like partner riders. |
 | 10 | **No real SMS/WhatsApp.** Contact alerts appear only on the contact's trip page. | Contact must have the page open. | Accepted | Per blueprint §15. |
 | 11 | **Demo mode never calls real emergency numbers.** | Needs a team member's phone number to ring instead. | Open | Owner provides the number at M10; stored in `backend/.env`, not in code. |
-| 12 | **Large videos and git.** GitHub refuses files over 100 MB. | Pushing `assets/videos/` could fail later. | Open | Decide with owner before the first push (keep videos out of git, or use Git LFS). |
+| 12 | **Large videos and git.** | — | Resolved | `assets/videos/*` is git-ignored (privacy and size). Files stay on disk. |
 | 13 | **No demo data yet.** `assets/videos`, `assets/images`, `assets/demo-data` are empty. | Video mode (M7) and the coloured demo map need real night footage/photos. | Open | Video mode is built and verified with generated test clips. **Owner's real footage still to be run** (copy into `assets/videos/`; the app lists it automatically). |
 | 14 | **OpenStreetMap tile usage policy** (back to OSM tiles, 2026-10-30): attribution required, no heavy use. | Fine for a demo. | Accepted | Attribution shown. Tile server configurable (`VITE_TILE_URL`). |
 | 15 | **Test warning:** starlette says its test client wants `httpx2` instead of `httpx`. Installing `httpx2` was blocked by the safety check (new package from outside). | None: tests pass; it is only a warning. | Accepted | Revisit only if a future update breaks the tests. |
@@ -45,3 +45,7 @@ Status values: Open · Workaround · Resolved · Accepted (stays for the demo, e
 | 37 | **Video photos are kept 6 hours from processing**, not from the ride (an older ride would otherwise be deleted immediately). | — | Accepted | Deletion job itself comes with M6. |
 | 38 | **Live mode needs https on phones** and a fixed GPS reading; tested only with Chrome's fake camera and simulated GPS. | Real-phone behaviour (iPhone/Android camera, GPS speed, screen lock) unknown. | Open | Test on Android + iPhone at M12. Screen may turn off where the Wake Lock feature is missing. |
 | 39 | **Photos are not shown anywhere yet** — they must be blurred first (blueprint §6). | — | Accepted | Blur + display in M6. |
+| 40 | **Sentinel GPS, accuracy and speed are reported by the phone** and cannot be proven by the server. | A person with the access code could send invented positions. | Accepted | Access code limits who can send; server rejects slow, duplicate and impossible-jump uploads (audit M2). |
+| 41 | **One shared Sentinel access code**, no per-person accounts. | Anyone given the code is trusted. | Accepted | Prototype. Change the code in `backend/.env` if it leaks. |
+| 42 | **Photo paths stored as absolute paths.** | Moving the project folder would break deletion. | Open | M6 cleanup must also find files by name in `backend/data/photos`. |
+| 43 | **Duplicate lock covers one server process.** | Several processes would need a database rule. | Accepted | We run one process. |

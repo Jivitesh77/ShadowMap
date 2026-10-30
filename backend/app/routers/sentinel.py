@@ -1,11 +1,13 @@
 """Sentinel endpoints: live photos from a phone, and night-ride videos (blueprint §5)."""
 
+import hmac
 import re
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -25,9 +27,31 @@ def _err(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status, {"code": code, "message": message})
 
 
+def require_access(x_sentinel_token: str | None = Header(None)) -> None:
+    """Sentinel data (photos, videos, rider routes) is only for people with the access code from backend/.env."""
+    if not config.SENTINEL_TOKEN:
+        raise _err(503, "no_access_code", "Sentinel is switched off: no access code is set on the server (SENTINEL_TOKEN in backend/.env).")
+    if not x_sentinel_token:
+        raise _err(401, "access_code_required", "Enter the Sentinel access code to use this page.")
+    if not hmac.compare_digest(x_sentinel_token.encode(), config.SENTINEL_TOKEN.encode()):
+        raise _err(403, "access_code_wrong", "That Sentinel access code is not correct.")
+
+
+PROTECTED = [Depends(require_access)]
+_photo_lock = threading.Lock()  # duplicate check + save happen as one step, even with simultaneous uploads
+
+
+def now_ist() -> datetime:
+    return datetime.now(IST).replace(tzinfo=None)
+
+
+def is_night(t: datetime) -> bool:
+    return t.hour >= config.NIGHT_START_HOUR or t.hour < config.NIGHT_END_HOUR
+
+
 # ---------------- Live Sentinel ----------------
 
-@router.post("/photo")
+@router.post("/photo", dependencies=PROTECTED)
 async def live_photo(
     image: UploadFile = File(...),
     lat: float = Form(..., ge=-90, le=90),
@@ -47,6 +71,10 @@ async def live_photo(
         raise _err(415, "not_jpeg", "Photo must be a JPEG image.")
     if accuracy_m > config.LIVE_MAX_GPS_ACCURACY_M:
         raise _err(422, "gps_inaccurate", f"GPS accuracy is {accuracy_m:.0f} m; photos need {config.LIVE_MAX_GPS_ACCURACY_M} m or better.")
+    if config.SENTINEL_ENFORCE_NIGHT and not is_night(now_ist()):
+        raise _err(422, "outside_hours", "Sentinel photos are only accepted between 6 pm and 6 am.")
+    if config.SENTINEL_ENFORCE_MOVING and (speed_kmh is None or speed_kmh < config.MIN_MOVING_KMH):
+        raise _err(422, "not_moving", f"Photos are only taken while moving (above {config.MIN_MOVING_KMH} km/h).")
 
     best = None
     for s in db.scalars(select(models.Street)).all():
@@ -59,31 +87,39 @@ async def live_photo(
 
     now = utcnow()
     when = now
+    phone_time = False  # True when the phone's own capture time is used (needed to judge speed between photos)
     if captured_at:
         try:
             t = datetime.fromisoformat(captured_at.replace("Z", "+00:00")).astimezone(timezone.utc).replace(tzinfo=None)
             if abs((t - now).total_seconds()) <= 600:
-                when = t  # trust the phone's clock only if it is within 10 minutes of ours
+                when, phone_time = t, True  # trust the phone's clock only if it is within 10 minutes of ours
         except ValueError:
             pass
 
-    last = db.scalars(
-        select(models.Observation).where(models.Observation.device_id == device_id).order_by(models.Observation.captured_at.desc())
-    ).first()
-    if last and haversine_m(lat, lon, last.lat, last.lon) < config.LIVE_DUPLICATE_RADIUS_M and (when - last.captured_at) < timedelta(minutes=10):
-        raise _err(409, "duplicate", f"Less than {config.LIVE_DUPLICATE_RADIUS_M} m from this device's last photo; skipped.")
+    with _photo_lock:
+        last = db.scalars(
+            select(models.Observation).where(models.Observation.device_id == device_id).order_by(models.Observation.captured_at.desc())
+        ).first()
+        if last:
+            moved = haversine_m(lat, lon, last.lat, last.lon)
+            gap_s = abs((when - last.captured_at).total_seconds())
+            if moved < config.LIVE_DUPLICATE_RADIUS_M and gap_s < 600:
+                raise _err(409, "duplicate", f"Less than {config.LIVE_DUPLICATE_RADIUS_M} m from this device's last photo; skipped.")
+            # Only with the phone's own times: queued uploads can arrive at the server seconds apart after a signal drop.
+            if phone_time and gap_s < 600 and moved / max(gap_s, 1) * 3.6 > config.MAX_PLAUSIBLE_KMH:
+                raise _err(422, "gps_jump", "The position jumped further than a vehicle can travel since the last photo; skipped.")
 
-    config.PHOTO_DIR.mkdir(parents=True, exist_ok=True)
-    path = config.PHOTO_DIR / f"live_{uuid.uuid4().hex}.jpg"
-    path.write_bytes(data)
-    obs = models.Observation(
-        street_id=street.id, sentinel_label=sentinel_label, source="live", captured_at=when, lat=lat, lon=lon,
-        gps_accuracy_m=accuracy_m, heading_deg=heading_deg, speed_kmh=speed_kmh, position_source="gps",
-        device_id=device_id, photo_path=str(path), photo_delete_at=when + timedelta(hours=config.PHOTO_KEEP_HOURS),
-        analysis_status="pending",
-    )
-    db.add(obs)
-    db.commit()
+        config.PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+        path = config.PHOTO_DIR / f"live_{uuid.uuid4().hex}.jpg"
+        path.write_bytes(data)
+        obs = models.Observation(
+            street_id=street.id, sentinel_label=sentinel_label, source="live", captured_at=when, lat=lat, lon=lon,
+            gps_accuracy_m=accuracy_m, heading_deg=heading_deg, speed_kmh=speed_kmh, position_source="gps",
+            device_id=device_id, photo_path=str(path), photo_delete_at=when + timedelta(hours=config.PHOTO_KEEP_HOURS),
+            analysis_status="pending",
+        )
+        db.add(obs)
+        db.commit()
     return {
         "observation_id": obs.id,
         "street_id": street.id,
@@ -102,7 +138,7 @@ def _asset_path(name: str) -> Path:
     return p
 
 
-@router.get("/videos/assets")
+@router.get("/videos/assets", dependencies=PROTECTED)
 def list_asset_videos():
     """Videos already in assets/videos (read in place, never changed)."""
     out = []
@@ -113,7 +149,7 @@ def list_asset_videos():
     return {"folder": "assets/videos", "videos": out}
 
 
-@router.get("/videos/assets/{name}")
+@router.get("/videos/assets/{name}", dependencies=PROTECTED)
 def check_asset_video(name: str):
     try:
         return {"video_ref": f"asset:{name}", "name": name, "info": probe(_asset_path(name))}
@@ -121,7 +157,7 @@ def check_asset_video(name: str):
         raise _err(422 if e.code != "unsupported_format" else 415, e.code, e.message)
 
 
-@router.post("/videos/uploads")
+@router.post("/videos/uploads", dependencies=PROTECTED)
 async def upload_video(file: UploadFile = File(...)):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -162,7 +198,7 @@ class TraceRequest(BaseModel):
     waypoints: list[tuple[float, float]] = Field(min_length=2, max_length=60)
 
 
-@router.post("/trace")
+@router.post("/trace", dependencies=PROTECTED)
 def preview_trace(req: TraceRequest, db: Session = Depends(get_db)):
     try:
         r = trace(street_edges(db), req.waypoints)
@@ -183,7 +219,7 @@ class JobRequest(BaseModel):
     frame_interval_s: float = Field(5, ge=2, le=30)
 
 
-@router.post("/videos/jobs")
+@router.post("/videos/jobs", dependencies=PROTECTED)
 def create_job(req: JobRequest, db: Session = Depends(get_db)):
     path, kind, name = _resolve_ref(req.video_ref)
     try:
@@ -261,13 +297,13 @@ def job_out(job: models.VideoJob, db: Session) -> dict:
     }
 
 
-@router.get("/videos/jobs")
+@router.get("/videos/jobs", dependencies=PROTECTED)
 def list_jobs(db: Session = Depends(get_db)):
     jobs = db.scalars(select(models.VideoJob).order_by(models.VideoJob.id.desc()).limit(20)).all()
     return {"jobs": [job_out(j, db) for j in jobs]}
 
 
-@router.get("/videos/jobs/{job_id}")
+@router.get("/videos/jobs/{job_id}", dependencies=PROTECTED)
 def get_job(job_id: int, db: Session = Depends(get_db)):
     job = db.get(models.VideoJob, job_id)
     if not job:
@@ -285,7 +321,7 @@ def sentinel_status(db: Session = Depends(get_db)):
     }
 
 
-@router.delete("/videos/jobs/{job_id}")
+@router.delete("/videos/jobs/{job_id}", dependencies=PROTECTED)
 def delete_job(job_id: int, db: Session = Depends(get_db)):
     """Remove a processed video's frames and observations (e.g. it was traced wrongly). Files in assets/videos are never touched;
     an uploaded copy in data/videos is removed."""

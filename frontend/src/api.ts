@@ -1,4 +1,5 @@
 // The ONLY place in the frontend that talks to the backend.
+import { accessHeaders } from './lib/sentinelAccess'
 // Addresses are relative (/api/...): in development Vite forwards them to the backend on port 8000.
 
 export interface Health {
@@ -267,7 +268,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000, i
 
 /** Sends a form (files + fields). The browser sets the right content type itself. */
 async function requestForm<T>(path: string, form: FormData, timeoutMs = 30000): Promise<T> {
-  return request<T>(path, { method: 'POST', body: form, headers: {} }, timeoutMs, true)
+  return request<T>(path, { method: 'POST', body: form, headers: accessHeaders() }, timeoutMs, true)
 }
 
 /** Uploads a video with a progress callback (0..1). fetch() cannot report upload progress, so this uses XHR. */
@@ -275,6 +276,7 @@ function uploadVideo(file: File, onProgress: (f: number) => void): Promise<Check
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/sentinel/videos/uploads')
+    Object.entries(accessHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v))
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
     xhr.onload = () => {
       let body: any = null
@@ -306,13 +308,17 @@ export const api = {
     request<{ observations_by_analysis: Record<string, number>; ai_configured: boolean; ai_note: string | null }>('/api/sentinel/status'),
   livePhoto: (form: FormData) => requestForm<LivePhotoResult>('/api/sentinel/photo', form, 20000),
   assetVideos: () =>
-    request<{ folder: string; videos: { name: string; size_bytes: number; supported: boolean }[] }>('/api/sentinel/videos/assets'),
-  checkAssetVideo: (name: string) => request<CheckedVideo>(`/api/sentinel/videos/assets/${encodeURIComponent(name)}`, undefined, 60000),
+    request<{ folder: string; videos: { name: string; size_bytes: number; supported: boolean }[] }>('/api/sentinel/videos/assets', {
+      headers: accessHeaders(),
+    }),
+  checkAssetVideo: (name: string) =>
+    request<CheckedVideo>(`/api/sentinel/videos/assets/${encodeURIComponent(name)}`, { headers: accessHeaders() }, 60000),
   uploadVideo,
   traceRoute: (waypoints: [number, number][]) =>
     request<{ geometry: [number, number][]; length_m: number; streets: number }>('/api/sentinel/trace', {
       method: 'POST',
       body: JSON.stringify({ waypoints }),
+      headers: accessHeaders(),
     }),
   createVideoJob: (body: {
     video_ref: string
@@ -323,11 +329,14 @@ export const api = {
     ride_start_s?: number | null
     ride_end_s?: number | null
     frame_interval_s?: number
-  }) => request<VideoJob>('/api/sentinel/videos/jobs', { method: 'POST', body: JSON.stringify(body) }, 60000),
-  videoJobs: () => request<{ jobs: VideoJob[] }>('/api/sentinel/videos/jobs'),
-  videoJob: (id: number) => request<VideoJob>(`/api/sentinel/videos/jobs/${id}`),
+  }) => request<VideoJob>('/api/sentinel/videos/jobs', { method: 'POST', body: JSON.stringify(body), headers: accessHeaders() }, 60000),
+  videoJobs: () => request<{ jobs: VideoJob[] }>('/api/sentinel/videos/jobs', { headers: accessHeaders() }),
+  videoJob: (id: number) => request<VideoJob>(`/api/sentinel/videos/jobs/${id}`, { headers: accessHeaders() }),
   deleteVideoJob: (id: number) =>
-    request<{ deleted_job: number; observations_removed: number }>(`/api/sentinel/videos/jobs/${id}`, { method: 'DELETE' }),
+    request<{ deleted_job: number; observations_removed: number }>(`/api/sentinel/videos/jobs/${id}`, {
+      method: 'DELETE',
+      headers: accessHeaders(),
+    }),
   street: (id: number, at?: string) =>
     request<StreetDetail>(`/api/streets/${id}${at ? `?at=${encodeURIComponent(at)}` : ''}`),
 }

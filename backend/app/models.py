@@ -204,3 +204,6 @@ class VideoJob(Base):
     error: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Uploaded copies hold unblurred faces and plates: deleted with the photos, 6 h after processing (by the M6 cleanup).
+    # Never set for videos in assets/videos, which belong to the team and are never deleted by ShadowMap.
+    file_delete_at: Mapped[datetime | None] = mapped_column(DateTime)

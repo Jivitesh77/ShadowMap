@@ -20,6 +20,75 @@ export interface Summary {
   open_alerts: number
 }
 
+export type RoadClass = 'main' | 'residential' | 'lane' | 'underpass'
+export type PlaceStatus = 'open' | 'closed' | 'unknown'
+export type StatusBasis = 'listed' | 'default' | 'missing' | 'unreadable'
+
+export interface Street {
+  id: number
+  name: string | null
+  road_type: string
+  road_class: RoadClass
+  lit: string | null
+  length_m: number
+  geometry: [number, number][]
+  osm_way_id: number
+}
+
+export interface Place {
+  id: number
+  osm_id: string | null
+  name: string | null
+  category: string
+  lat: number
+  lon: number
+  opening_hours: string | null
+  phone: string | null
+  status: PlaceStatus
+  status_basis: StatusBasis
+  source: 'openstreetmap' | 'manual'
+  in_demo_area: boolean
+  verified_by: string | null
+  verified_on: string | null
+  note: string | null
+  distance_from_center_m: number | null
+  distance_m?: number
+}
+
+export interface MapSource {
+  file?: string
+  downloaded_at_utc?: string
+  osm_data_timestamp?: string
+  licence?: string
+  area?: {
+    name: string
+    center: [number, number]
+    bbox: { south: number; west: number; north: number; east: number }
+    help_radius_m: number
+  }
+}
+
+export interface MapData {
+  at: string
+  source: MapSource
+  streets: Street[]
+  places: Place[]
+}
+
+export interface StreetDetail {
+  id: number
+  name: string | null
+  road_type: string
+  road_class: RoadClass
+  lit: string | null
+  length_m: number
+  osm_way_id: number
+  map_score: number | null
+  observations: number
+  reports: number
+  nearby_places: Place[]
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -65,4 +134,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000): 
 export const api = {
   health: () => request<Health>('/api/health', undefined, 4000),
   summary: () => request<Summary>('/api/summary'),
+  map: (at?: string) => request<MapData>(`/api/map${at ? `?at=${encodeURIComponent(at)}` : ''}`),
+  street: (id: number, at?: string) =>
+    request<StreetDetail>(`/api/streets/${id}${at ? `?at=${encodeURIComponent(at)}` : ''}`),
 }

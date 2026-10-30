@@ -17,6 +17,9 @@ class Street(Base):
     osm_way_id: Mapped[int] = mapped_column(Integer, index=True)
     name: Mapped[str | None] = mapped_column(String(200))
     road_type: Mapped[str] = mapped_column(String(50))  # OSM highway tag, e.g. primary, residential, footway
+    road_class: Mapped[str] = mapped_column(String(20))  # main / residential / lane / underpass (blueprint §7)
+    lit: Mapped[str | None] = mapped_column(String(10))  # OSM "lit" tag if mapped: yes / no; usually missing
+    in_demo_area: Mapped[bool] = mapped_column(Boolean, default=True)
     start_node: Mapped[int] = mapped_column(Integer, index=True)  # OSM node id
     end_node: Mapped[int] = mapped_column(Integer, index=True)
     length_m: Mapped[float] = mapped_column(Float)
@@ -40,7 +43,11 @@ class Place(Base):
     lon: Mapped[float] = mapped_column(Float)
     opening_hours: Mapped[str | None] = mapped_column(String(300))  # raw OSM text
     phone: Mapped[str | None] = mapped_column(String(50))
-    source: Mapped[str] = mapped_column(String(50), default="openstreetmap")
+    source: Mapped[str] = mapped_column(String(50), default="openstreetmap")  # openstreetmap / manual
+    in_demo_area: Mapped[bool] = mapped_column(Boolean, default=True)  # False = nearby help outside the 2x2 km box
+    verified_by: Mapped[str | None] = mapped_column(String(80))  # manual places only
+    verified_on: Mapped[str | None] = mapped_column(String(20))  # manual places only, YYYY-MM-DD
+    note: Mapped[str | None] = mapped_column(String(300))  # manual places only: how it was checked
     last_seen_open_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 

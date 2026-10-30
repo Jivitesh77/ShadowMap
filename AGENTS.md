@@ -75,6 +75,7 @@ shadowmap/
 - First time only: `cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && cp .env.example .env`, and `cd frontend && npm install`.
 - Everything at once: `./start.sh` from the project folder (Ctrl+C stops both). Open http://localhost:5173.
 - Separately: backend `cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000`; frontend `cd frontend && npm run dev`. Vite forwards `/api` and `/ws` to port 8000.
+- Map data: `cd backend && .venv/bin/python -m scripts.build_map` (offline, from `assets/demo-data/`). `scripts.fetch_osm` downloads from Overpass only when asked.
 - Backend tests: `cd backend && .venv/bin/pytest`
 - Frontend type-check + build: `cd frontend && npm run build`
 - Tables are created automatically at backend start (`init_db`). There are no migrations: if a model changes, ask the owner before deleting `backend/data/shadowmap.db`.

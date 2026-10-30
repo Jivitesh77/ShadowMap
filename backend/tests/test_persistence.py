@@ -12,7 +12,7 @@ def test_rows_survive_reconnect(tmp_db_url):
     init_db(engine)
     with Session(engine) as db:
         street = models.Street(
-            osm_way_id=1, name="Test Road", road_type="residential",
+            osm_way_id=1, name="Test Road", road_type="residential", road_class="residential",
             start_node=10, end_node=11, length_m=120.5, geometry=[[26.0, 91.0], [26.001, 91.0]],
         )
         db.add(street)

@@ -1,0 +1,9 @@
+{
+  "name": "IIIT Guwahati and surroundings",
+  "center": [26.0804088, 91.5605235],
+  "center_source": "OpenStreetMap way 881785698 (Indian Institute of Information Technology, Guwahati), looked up via Nominatim on 2026-10-30",
+  "bbox": { "south": 26.0714, "west": 91.5505, "north": 26.0894, "east": 91.5705 },
+  "bbox_note": "About 2.0 km x 2.0 km centred on the campus",
+  "help_radius_m": 8000,
+  "help_radius_note": "Police, hospitals, clinics, petrol pumps, pharmacies and ATMs are also loaded within this radius, because OpenStreetMap lists none of the first four inside the 2 km box"
+}

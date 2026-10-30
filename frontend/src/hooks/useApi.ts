@@ -7,8 +7,9 @@ export interface ApiState<T> {
   reload: () => void
 }
 
-/** Loads data from the backend and tracks loading / error state. Optionally refreshes every `pollMs`. */
-export function useApi<T>(load: () => Promise<T>, pollMs?: number): ApiState<T> {
+/** Loads data from the backend and tracks loading / error state.
+ *  Optionally refreshes every `pollMs`, and reloads whenever `key` changes (e.g. a chosen time). */
+export function useApi<T>(load: () => Promise<T>, pollMs?: number, key?: string | number | null): ApiState<T> {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -32,7 +33,7 @@ export function useApi<T>(load: () => Promise<T>, pollMs?: number): ApiState<T> 
     if (!pollMs) return
     const id = setInterval(() => run(false), pollMs)
     return () => clearInterval(id)
-  }, [run, pollMs])
+  }, [run, pollMs, key])
 
   return { data, error, loading, reload: () => run(true) }
 }

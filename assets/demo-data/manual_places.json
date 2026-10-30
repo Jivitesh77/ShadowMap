@@ -1,0 +1,12 @@
+{
+  "how_to": [
+    "Add ONLY places a team member has checked in person. Never add a place from memory or a guess.",
+    "category must be one of: police, hospital, clinic, pharmacy, fuel, atm, transit, food_shop, hotel.",
+    "lat/lon: stand at the entrance and copy the coordinates from Google Maps (long-press) or a GPS app. Say which in 'note'.",
+    "opening_hours uses OpenStreetMap style, e.g. \"24/7\" or \"Mo-Su 08:00-22:00\" or \"Mo-Sa 09:00-21:00\". Leave it as null if you did not confirm the hours.",
+    "verified_on is the date you checked it (YYYY-MM-DD). verified_by is the team member's name.",
+    "After editing, rebuild the map: cd backend && .venv/bin/python -m scripts.build_map",
+    "Example entry (copy, then edit): {\"name\": \"...\", \"category\": \"pharmacy\", \"lat\": 26.08, \"lon\": 91.56, \"opening_hours\": null, \"phone\": null, \"verified_by\": \"...\", \"verified_on\": \"2026-10-31\", \"note\": \"Checked on site; coordinates from Google Maps pin\"}"
+  ],
+  "places": []
+}

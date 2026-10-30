@@ -4,13 +4,13 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-30 — M0 done and verified. Next: M1 (map data).
+Last updated: 2026-10-30 — M0, M1, M2 done and verified. Next: M3 (map score + street colours).
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
 | M0 | Project skeleton | P1 | 2 h | Done (verified) | 3/3 pytest pass; health OK direct + via proxy; all 5 pages render (screenshots); offline state checked |
-| M1 | Real map data for the demo area | P1 | 3 h | Not started | Owner approved going ahead with my plan; propose area box from OSM |
-| M2 | "Open now" + demo clock | P1 | 2 h | Not started | |
+| M1 | Real map data for the demo area | P1 | 3 h | Done (verified) | 72 street segments (18.2 km), 20 real OSM places; map clickable on desktop + phone |
+| M2 | "Open now" + demo clock | P1 | 2 h | Done (verified) | Hours reader with 8 tests; walk-time picker (Now / Tonight 11:30 pm / any time); open/closed/unknown + basis shown |
 | M3 | Map score + street colours | P1 | 1.5 h | Not started | |
 | M4 | Route finder (shortest vs safest) | P1 | 3 h | Not started | |
 | M5 | Sentinel capture page | P1 | 3 h | Not started | |
@@ -51,3 +51,26 @@ Fixed during verification: fallback font rendered as monospace (now bundled Inte
 - No `CLAUDE.md` in the project (owner deleted it on purpose).
 - 36 h building first, then 12 h testing/fixing. Real night videos may only be ready for the testing phase.
 - Owner hit "Address already in use" on port 8000: my test servers were still running. Stopped them; ports 8000 and 5173 confirmed free.
+
+### 2026-10-30 — M1 Real map data + M2 Open now (Done, verified)
+Area: IIIT Guwahati, centre 26.0804088, 91.5605235 (OSM way 881785698, via Nominatim). Box 26.0714–26.0894 N, 91.5505–91.5705 E (~2 × 2 km), saved in `assets/demo-data/area.json`.
+
+Built:
+- `backend/scripts/fetch_osm.py`: downloads once from Overpass (retries + second server), saves `assets/demo-data/osm_2026-10-30.json` with download time, OSM timestamp, query and licence. Never overwrites.
+- `backend/scripts/build_map.py`: offline; splits roads at junctions into segments, classifies roads (blueprint §7), loads places (blueprint §4 categories) + `assets/demo-data/manual_places.json` (requires verified_by + verified_on). Refuses to rebuild once observations/reports exist.
+- `app/services/hours.py` (opening hours → open / closed / unknown, with basis listed / default / missing / unreadable), `geo.py`, `osm.py`.
+- API: `GET /api/map?at=YYYY-MM-DDTHH:MM` (India time), `GET /api/streets/{id}` (details + places within 200 m).
+- Frontend: Leaflet map with darkened OSM tiles, streets styled by road class (safety colours kept for M3), category icons with open/closed/unknown styles, white ring for manual places, dashed demo-area box, category filters with counts, "open at walk time only", walk-time picker, street and place panels, area overview with data gaps and nearest help.
+
+Real data result (from build_map output):
+- Streets: 72 segments, 18.2 km — 49 main (43 tertiary, 6 trunk/NH17), 23 residential/minor. No footpaths or lanes in OSM here.
+- Places inside the box: 6 (all shops/food). Nearby help (≤ 8 km): Azara Police Station 6.7 km, Azara 30 Bedded Rural Hospital 7.5 km, Baba Ganesh Medicos 6.9 km, Indian Oil 5.5 km, 6 ATMs, 3 clinics, 2 petrol pumps.
+- Only 1 of 20 places lists opening hours (South Indian Bank ATM, 24/7).
+
+Checks run (evidence):
+- `pytest`: 18 passed (hours reader 8 cases incl. past-midnight and unreadable; road classes; place categories; junction splitting; distances; map + street endpoints incl. 400/404; manual places require verifier/date/valid category).
+- Live API on the owner's running server: `/api/map?at=2026-10-30T23:30` → 72 streets, 20 places; statuses: 17 unknown (missing), 2 open (default: police, hospital), 1 open (listed 24/7).
+- Headless Chrome driven by script on the owner's running app, at 1440×900 and 390×844: 20 markers, 145 street paths, no sideways scrolling on phone; tapping "Azara Police Station" opens its panel (Open, assumed, 6.7 km); tapping a street opens its panel; "Tonight 11:30 pm" relabels the map; "open only" filter → 3 markers; hiding Shops & food → 14 markers.
+
+Fixed during verification: summary crash after build (detached objects); map wider than phone screen.
+Not yet seen on screen: a real manually added place (none verified yet) — logic covered by test.

@@ -33,6 +33,16 @@ cd ~/Projects/shadowmap/frontend
 npm install
 ```
 
+## Map data
+
+The map uses real OpenStreetMap data, downloaded once and saved in `assets/demo-data/`. The demo never downloads it again.
+
+- Add a place the team checked in person: edit `assets/demo-data/manual_places.json` (instructions are inside), then rebuild:
+  ```bash
+  cd ~/Projects/shadowmap/backend && .venv/bin/python -m scripts.build_map
+  ```
+- Download fresh OpenStreetMap data (rarely needed, needs internet): `.venv/bin/python -m scripts.fetch_osm`, then `build_map`.
+
 ## Run the tests
 
 ```bash

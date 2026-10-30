@@ -48,3 +48,8 @@ VIDEO_FRAME_INTERVAL_S = 5
 # Walking speed for time estimates. Blueprint §8 example: 1.1 km = 13 min, i.e. about 5 km/h.
 WALK_SPEED_KMH = 5.0
 SAFE_PLACE_PASSED_M = 50  # a place counts as "passed" within 50 m of the route
+
+# --- Optional Google Places (supplementary place discovery) ---
+# Key only in backend/.env, never in frontend code. Empty = feature off; the app works fully without it.
+GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "").strip()
+GOOGLE_PLACES_MAX_PER_HOUR = int(os.getenv("GOOGLE_PLACES_MAX_PER_HOUR", "30"))  # protects the billing account

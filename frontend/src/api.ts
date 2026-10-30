@@ -149,6 +149,26 @@ export interface StreetDetail {
   nearby_places: Place[]
 }
 
+// Google Places results: shown only in a separate, attributed list. Never on the map, never stored.
+export interface GooglePlace {
+  place_id: string
+  name: string | null
+  address: string | null
+  google_type: string | null
+  category: string | null
+  business_status: string | null
+  google_maps_uri: string | null
+  distance_m: number | null
+}
+
+export interface GoogleNearby {
+  source: 'google'
+  attribution: string
+  radius_m: number
+  results: GooglePlace[]
+  notes: string[]
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -199,6 +219,9 @@ export const api = {
   map: (at?: string) => request<MapData>(`/api/map${at ? `?at=${encodeURIComponent(at)}` : ''}`),
   route: (start: LatLon, end: LatLon, at?: string) =>
     request<RouteResult>('/api/route', { method: 'POST', body: JSON.stringify({ start, end, at }) }, 20000),
+  googleStatus: () => request<{ configured: boolean; attribution: string }>('/api/google-places/status'),
+  googleNearby: (lat: number, lon: number, radius_m: number) =>
+    request<GoogleNearby>('/api/google-places/nearby', { method: 'POST', body: JSON.stringify({ lat, lon, radius_m }) }, 15000),
   street: (id: number, at?: string) =>
     request<StreetDetail>(`/api/streets/${id}${at ? `?at=${encodeURIComponent(at)}` : ''}`),
 }

@@ -35,7 +35,8 @@ Exactly **one frontend** and **one backend**.
 | Part | Technology |
 | --- | --- |
 | Frontend | React + TypeScript + Vite + Tailwind CSS, in `frontend/` |
-| Map display | MapLibre GL JS 6 (`frontend/src/components/MapView.tsx`), background style from OpenFreeMap (dark) — configurable in `frontend/src/lib/mapProvider.ts` / `VITE_MAP_STYLE_URL` |
+| Map display | Leaflet (`react-leaflet`) with OpenStreetMap tiles (`frontend/src/components/MapView.tsx`); tile server configurable via `VITE_TILE_URL` (`frontend/src/lib/mapProvider.ts`). Owner decision 2026-10-30: no MapLibre/OpenFreeMap/Ola/Google as primary renderer |
+| Places | OSM (Overpass) + ShadowMap team-verified places in our DB, merged carefully (`backend/app/services/places.py`). Optional Google Places (`backend/app/routers/google_places.py`) only in a separate attributed list |
 | Backend | Python + FastAPI, in `backend/` |
 | Database | SQLite + SQLAlchemy 2 (tables in `backend/app/models.py`), file at `backend/data/shadowmap.db` |
 | Routing | Our own Dijkstra in Python (`heapq`), no routing libraries |
@@ -46,7 +47,7 @@ Exactly **one frontend** and **one backend**.
 | Voice | Browser built-in speech (`speechSynthesis`) — no paid voice service |
 
 All five screens (Walker, Sentinel, Contact, Police dashboard, City dashboard) are pages inside the one React app.
-Do **not** add: Google Maps or any Google API, paid map services, Leaflet (replaced), Redux, Next.js, React Router, Docker, PostgreSQL, Redis, Celery, Alembic, osmnx, a separate WebSocket server, or a UI component kit — unless the owner approves.
+Do **not** add: Google map tiles or a Google map, MapLibre/OpenFreeMap (removed), other paid services, Redux, Next.js, React Router, Docker, PostgreSQL, Redis, Celery, Alembic, osmnx, a separate WebSocket server, or a UI component kit — unless the owner approves.
 
 ## 5. Folder layout
 
@@ -63,7 +64,7 @@ shadowmap/
     src/pages/      WalkerPage, SentinelPage, ContactPage, PolicePage, CityPage
     src/components/ shared map and UI pieces
     src/api.ts      the only place that talks to the backend
-    src/lib/mapProvider.ts  which background map provider is used
+    src/lib/mapProvider.ts  which tile server the Leaflet map uses
     src/router.ts   tiny page switcher (/, /sentinel, /trip/:id, /police, /city)
   assets/
     videos/  images/  demo-data/   (owner-provided and downloaded source data; never delete)
@@ -80,7 +81,7 @@ shadowmap/
 - Backend tests: `cd backend && .venv/bin/pytest`
 - Frontend type-check + build: `cd frontend && npm run build`
 - Tables are created automatically at backend start (`init_db`). There are no migrations: if a model changes, ask the owner before deleting `backend/data/shadowmap.db`.
-- Visual check without the Chrome extension (add `--use-angle=swiftshader --enable-unsafe-swiftshader` so the MapLibre map can draw): `google-chrome-stable --headless=new --screenshot=out.png --window-size=1440,900 --virtual-time-budget=5000 http://localhost:5173/`
+- Visual check without the Chrome extension: `google-chrome-stable --headless=new --screenshot=out.png --window-size=1440,900 --virtual-time-budget=5000 http://localhost:5173/`
 
 ## 7. Working process
 
@@ -93,7 +94,12 @@ Schedule (owner decision, 2026-10-30): **36 h building first, then 12 h testing 
 5. After each milestone, stop and give the owner a short plain-language summary and ask before committing to git.
 6. Keep code simple and readable. Prefer one clear file over clever abstractions. Add tests for the safety score, opening hours and routing.
 
-Map rules: the background map is only a picture. Streets, scores, places and routes are drawn from ShadowMap's own data and routing runs in the backend, independent of the renderer. Never claim Google-Maps-level accuracy; data gaps are listed in `docs/DATA_GAPS.md`.
+Map and place rules (owner decisions, 2026-10-30):
+- Map tiles are only a picture. Streets, scores, places and routes come from ShadowMap's own data; routing runs in the backend, independent of the renderer. Never claim Google-Maps-level accuracy; gaps are in `docs/DATA_GAPS.md`.
+- **Never assume a place is open because hours are missing** (overrides blueprint §4's 24 h default for police/hospital/hotel). Missing = "unknown".
+- **Never call a place "safe"** because of its category. Use neutral words ("place", "help point", "places passed (not closed)").
+- **Google Places content is never drawn on the Leaflet/OSM map, never merged with our places, never stored or cached** (only place IDs may be kept; we keep none). Shown only in the separate list with "Google Maps" attribution and "Open in Google Maps" links. Key only in `backend/.env`. Without a key everything else must work.
+- Team-verified places go in `assets/demo-data/manual_places.json` (who, when, how) — never copied from Google.
 
 ## 8. Key numbers (from BLUEPRINT.md — keep them in `backend/app/config.py`, not scattered)
 

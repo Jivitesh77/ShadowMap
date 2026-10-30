@@ -4,7 +4,7 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-30 — M0–M4 done; map migrated to MapLibre + OpenFreeMap (verified). Demo area: campus (owner chose). Next: M5 (Sentinel capture).
+Last updated: 2026-10-30 — M0–M4 done; back on Leaflet + OSM; multi-source places done (verified). Demo area: campus. Next: M5 (Sentinel capture).
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
@@ -113,3 +113,17 @@ Problems found and fixed during testing:
 Checks run (script-driven headless Chrome with WebGL, against the owner's running app; desktop 1440×900 and phone 390×844):
 PASS renders (WebGL, dark style 47 layers + 8 ShadowMap layers) · PASS 72–73 ShadowMap streets drawn in safety colour · PASS 20 place markers · PASS zoom +1 via button · PASS pan by drag · PASS tap marker → place panel · PASS tap street → street panel + halo · PASS route: A/B markers, safest line drawn, comparison card, streets faded · PASS background map blocked → notice, streets and markers still drawn · PASS no JavaScript errors · PASS no sideways scrolling on phone. Backend `pytest`: 39 passed. `npm run build` passes.
 Not yet checked: the production build served to a real phone (M12).
+
+### 2026-10-30 — Back to Leaflet + multi-source places (Done, verified; Google part verified with simulated replies only)
+Owner decisions: revert to Leaflet + OpenStreetMap (no MapLibre/OpenFreeMap/Ola/Google as renderer); never assume open when hours are missing; never label a place "safe" by category; optional Google Places only in a separate attributed list.
+
+Steps (each committed): `0e0672a` Leaflet restored from 7dbb7bf (tile server configurable, dev-only test hook) · `9e44625` hours never assumed + neutral wording · `d4d319c` wider OSM discovery, careful OSM/ShadowMap matching, sources/dates/confidence · this commit: optional Google Places + docs.
+
+Google terms checked 2026-10-30 (developers.google.com Places policies + Nearby Search docs): results without a Google map need "Google Maps" attribution; no caching except place IDs; on a map only a Google map. Implementation: backend-only call, key in header, Pro fields only (no hours), no storage, no coordinates sent to the screen, hourly cap, button-triggered.
+
+Checks run:
+- `pytest`: 50 passed (new: 6 matching/confidence tests incl. "Sharma Medicos" ≠ "Verma Medicos", "Sharma Tea Stall" ≠ "Sharma General Store", spelling variants, OSM duplicate merge, verified merge/add/explicit link; 5 Google tests with simulated replies: off without key, key only in header, no hours fields, no DB writes, no coordinates out, errors without key, hourly limit).
+- New saved download `osm_2026-10-30T1233.json`: 27 places (was 20: +5 clinics via healthcare tags, +2 railway stations); still none of police/hospital/pharmacy/fuel inside the area.
+- Live (owner's app): 26 of 27 places "unknown", 1 open from listed 24/7; police and hospital "unknown", confidence medium with reason; no "safe" in place data; Google status `configured: false`, search → 503 not_configured; route still 1250 m.
+- Browser (desktop + phone): Leaflet + OSM tiles; no Google content on the page; 27 markers; zoom and pan; police panel shows sources, confidence + reason, "Never checked in person", OSM last-edited date; Google section says "not set up"; route card shows "Places passed (not closed)".
+Not done: a live call to Google (no key).

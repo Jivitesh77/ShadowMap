@@ -4,7 +4,7 @@ ShadowMap uses free OpenStreetMap (OSM) data. Around IIIT Guwahati that data is 
 
 **ShadowMap does not claim Google-Maps-level accuracy or coverage.** Streets and places are only as good as OSM plus what our team verifies in person.
 
-- Source file: `assets/demo-data/osm_2026-10-30.json` (OSM data as of 2026-10-30 05:55 UTC)
+- Source file: `assets/demo-data/osm_2026-10-30T1233.json` (OSM data as of 2026-10-30 07:02 UTC; wider place search). The first download `osm_2026-10-30.json` is kept.
 - Demo area: 26.0714–26.0894 N, 91.5505–91.5705 E (about 2 km × 2 km around the campus)
 - Numbers below were measured on 2026-10-30 from the database built from that file.
 
@@ -23,21 +23,25 @@ ShadowMap uses free OpenStreetMap (OSM) data. Around IIIT Guwahati that data is 
 
 | What | Measured |
 | --- | --- |
-| Places inside the 2 km box | **6**, all shops / food (incl. the campus Canteen) |
+| Places found (box + 8 km help ring) | **27**: 6 inside the box (all shops / food, incl. the campus Canteen), 21 outside (8 clinics, 6 ATMs, 2 petrol pumps, 2 railway stations, 1 hospital, 1 police, 1 pharmacy) |
 | Police, hospital, pharmacy, petrol pump inside the box | **0** |
 | Bus stops mapped inside the box | **0** (none in OSM; we have not checked on site) |
 | Nearest police (OSM) | Azara Police Station, 6.7 km |
 | Nearest hospital (OSM) | Azara 30 Bedded Rural Hospital (F.R.U), 7.5 km |
 | Nearest pharmacy (OSM) | Baba Ganesh Medicos, 6.9 km |
 | Nearest petrol pump (OSM) | Indian Oil, 5.5 km |
-| Places with opening hours | **1 of 20** (South Indian Bank ATM, 24/7) |
-| Places with a phone number | 5 of 20 |
+| Places with opening hours | **1 of 27** (South Indian Bank ATM, 24/7) |
+| Team-verified (ShadowMap) places | 0 so far |
 
-Consequences: most places show **"Hours unknown"**; police and hospitals show **"Open (assumed)"** with a note; with map data alone every street scores yellow (45–64).
+Consequences: 26 of 27 places show **"Hours unknown"** — including police and hospitals, which are never assumed open; every OSM-only place has confidence "medium" at best; with map data alone every street scores yellow (45–64).
 
-## Background map (OpenFreeMap)
+## Background map tiles
 
-The background picture comes from OpenFreeMap, which is also built from OSM but updated on its own schedule. It may show a road that ShadowMap's own data does not have (or the other way round). **Routes, scores and places always come from ShadowMap's own saved data**, never from the background picture. If the background map cannot load, ShadowMap still draws its streets, places and routes on a plain background.
+The Leaflet map shows OpenStreetMap's standard tiles. They may be newer than our 2026-10-30 download, so a road can appear in the picture but not be routable. **Routes, scores and places always come from ShadowMap's own saved data.** Without internet the tiles are blank, but ShadowMap's streets, places and routes are still drawn.
+
+## Google Places (optional)
+
+If a Google key is configured, the Walker panel can list extra nearby places from Google Maps. These are **not** used to fill the gaps above: they are not drawn on our map, not saved, and not merged (Google's terms). A team member may visit a place found there and then add it as a ShadowMap-verified place from their own on-site check.
 
 ## How gaps get filled
 

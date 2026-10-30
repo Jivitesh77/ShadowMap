@@ -43,11 +43,11 @@ The map uses real OpenStreetMap data, downloaded once and saved in `assets/demo-
   ```
 - Download fresh OpenStreetMap data (rarely needed, needs internet): `.venv/bin/python -m scripts.fetch_osm`, then `build_map`.
 
-## Background map
+## Map and places
 
-The map is drawn with MapLibre GL JS using OpenFreeMap's free dark style (no API key, no Google services).
-To use another provider, copy `frontend/.env.example` to `frontend/.env` and set `VITE_MAP_STYLE_URL`.
-Known gaps in the local map data: [docs/DATA_GAPS.md](docs/DATA_GAPS.md).
+- Map: Leaflet with OpenStreetMap tiles. Other tile server: copy `frontend/.env.example` to `frontend/.env` and set `VITE_TILE_URL`.
+- Places: OpenStreetMap + places the team checked in person (`assets/demo-data/manual_places.json`). Known gaps: [docs/DATA_GAPS.md](docs/DATA_GAPS.md).
+- Optional Google Places search: put a Google Places API (New) key in `backend/.env` as `GOOGLE_PLACES_API_KEY=...` (never in the frontend, never in chat). Results appear only in a separate "More places nearby — Google Maps" list, never on the map, and are not saved. Searches cost money beyond Google's free usage; set a budget alert in Google Cloud. Without a key the app works normally.
 
 ## Run the tests
 

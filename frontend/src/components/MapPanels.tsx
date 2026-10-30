@@ -16,6 +16,7 @@ import {
   roadTypeLabel,
   statusExplanation,
 } from '../lib/mapMeta'
+import { GooglePlacesPanel } from './GooglePlacesPanel'
 import { InfoIcon, XIcon } from './Icons'
 import type { Selection } from './MapView'
 import { ErrorState, LoadingBlock } from './States'
@@ -275,6 +276,8 @@ export function AreaOverview({ data, onPick }: { data: MapData; onPick: (s: Sele
           ))}
         </ul>
       </div>
+
+      {data.source.area?.center && <GooglePlacesPanel center={data.source.area.center} />}
 
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-400">Legend</h3>

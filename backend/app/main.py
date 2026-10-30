@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app import config, models
 from app.db import get_db, init_db, utcnow
 from app.routers import map as map_router
+from app.routers import google_places as google_router
 from app.routers import route as route_router
 
 
@@ -28,6 +29,7 @@ app.add_middleware(
 )
 app.include_router(map_router.router)
 app.include_router(route_router.router)
+app.include_router(google_router.router)
 
 
 @app.get("/")

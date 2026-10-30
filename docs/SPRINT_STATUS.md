@@ -4,7 +4,7 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-30 — M0–M4 done and verified. Next: M5 (Sentinel capture). Demo walk still to be chosen (see log).
+Last updated: 2026-10-30 — M0–M4 done; map migrated to MapLibre + OpenFreeMap (verified). Demo area: campus (owner chose). Next: M5 (Sentinel capture).
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
@@ -96,3 +96,20 @@ Measurements on the real campus network (map data only, 23:30):
 Demo walk: owner suggested campus → Fancy Bazar. Checked: Fancy Bazar is 20.7 km straight-line from IIIT Guwahati (OSM node 1698296623) — not walkable and far outside the map area. Owner to decide (see report).
 
 Fixed during verification: road pieces just outside the box were dropped (now kept within ~300 m, marked outside the area); vague error title for route errors.
+
+### 2026-10-30 — Owner decision + map renderer migration (Done, verified)
+- Demo area: owner accepted the recommendation — **keep the IIIT Guwahati area** (Fancy Bazar is 20.7 km away). Exact demo walk (start/end with a real alternative route) to be proposed once Sentinel data exists.
+- Replaced Leaflet + OSM raster tiles with **MapLibre GL JS 6.14.0** + **OpenFreeMap dark** vector style. Only `MapView.tsx` changed its internals; its inputs stayed the same, so Walker page, panels and routing are untouched. Leaflet packages removed.
+- Provider configurable: `frontend/src/lib/mapProvider.ts`, or `VITE_MAP_STYLE_URL` / `VITE_MAP_ATTRIBUTION` in `frontend/.env` (see `.env.example`).
+- Our data is GeoJSON layers on top: streets by safety colour (zoom-scaled widths, dashed lanes), selection halo, invisible wide tap layer, safest route (amber, dark casing), shortest route (dotted, only when different), dashed demo-area box; places and A/B as HTML markers (same styles as before). Streets re-sent whenever scores change (ready for Sentinel updates and reports).
+- Background map downloaded by our code with a 10 s limit; on failure a plain dark background is used and a notice shown — ShadowMap data still drawn.
+- `docs/DATA_GAPS.md` documents measured gaps (0 footpaths, 6/73 named segments, 0 lit tags, 0 police/hospital/pharmacy/fuel inside the area, 1/20 places with hours).
+
+Problems found and fixed during testing:
+- MapLibre 6 worker file not found under the dev server's cache → set the worker address explicitly (`setWorkerUrl` with Vite `?url`); production build emits it as its own file.
+- A layer filter written in a form MapLibre rejects → strict boolean filters.
+- Fallback was triggered by minor loading errors and by React's development double-start → style is now fetched by our code; only a real failure counts.
+
+Checks run (script-driven headless Chrome with WebGL, against the owner's running app; desktop 1440×900 and phone 390×844):
+PASS renders (WebGL, dark style 47 layers + 8 ShadowMap layers) · PASS 72–73 ShadowMap streets drawn in safety colour · PASS 20 place markers · PASS zoom +1 via button · PASS pan by drag · PASS tap marker → place panel · PASS tap street → street panel + halo · PASS route: A/B markers, safest line drawn, comparison card, streets faded · PASS background map blocked → notice, streets and markers still drawn · PASS no JavaScript errors · PASS no sideways scrolling on phone. Backend `pytest`: 39 passed. `npm run build` passes.
+Not yet checked: the production build served to a real phone (M12).

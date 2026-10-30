@@ -35,7 +35,7 @@ Exactly **one frontend** and **one backend**.
 | Part | Technology |
 | --- | --- |
 | Frontend | React + TypeScript + Vite + Tailwind CSS, in `frontend/` |
-| Map display | Leaflet (via `react-leaflet`) with OpenStreetMap tiles |
+| Map display | MapLibre GL JS 6 (`frontend/src/components/MapView.tsx`), background style from OpenFreeMap (dark) — configurable in `frontend/src/lib/mapProvider.ts` / `VITE_MAP_STYLE_URL` |
 | Backend | Python + FastAPI, in `backend/` |
 | Database | SQLite + SQLAlchemy 2 (tables in `backend/app/models.py`), file at `backend/data/shadowmap.db` |
 | Routing | Our own Dijkstra in Python (`heapq`), no routing libraries |
@@ -46,7 +46,7 @@ Exactly **one frontend** and **one backend**.
 | Voice | Browser built-in speech (`speechSynthesis`) — no paid voice service |
 
 All five screens (Walker, Sentinel, Contact, Police dashboard, City dashboard) are pages inside the one React app.
-Do **not** add: Redux, Next.js, React Router, Docker, PostgreSQL, Redis, Celery, Alembic, osmnx, a separate WebSocket server, or a UI component kit — unless the owner approves.
+Do **not** add: Google Maps or any Google API, paid map services, Leaflet (replaced), Redux, Next.js, React Router, Docker, PostgreSQL, Redis, Celery, Alembic, osmnx, a separate WebSocket server, or a UI component kit — unless the owner approves.
 
 ## 5. Folder layout
 
@@ -63,6 +63,7 @@ shadowmap/
     src/pages/      WalkerPage, SentinelPage, ContactPage, PolicePage, CityPage
     src/components/ shared map and UI pieces
     src/api.ts      the only place that talks to the backend
+    src/lib/mapProvider.ts  which background map provider is used
     src/router.ts   tiny page switcher (/, /sentinel, /trip/:id, /police, /city)
   assets/
     videos/  images/  demo-data/   (owner-provided and downloaded source data; never delete)
@@ -79,7 +80,7 @@ shadowmap/
 - Backend tests: `cd backend && .venv/bin/pytest`
 - Frontend type-check + build: `cd frontend && npm run build`
 - Tables are created automatically at backend start (`init_db`). There are no migrations: if a model changes, ask the owner before deleting `backend/data/shadowmap.db`.
-- Visual check without the Chrome extension: `google-chrome-stable --headless=new --screenshot=out.png --window-size=1440,900 --virtual-time-budget=5000 http://localhost:5173/`
+- Visual check without the Chrome extension (add `--use-angle=swiftshader --enable-unsafe-swiftshader` so the MapLibre map can draw): `google-chrome-stable --headless=new --screenshot=out.png --window-size=1440,900 --virtual-time-budget=5000 http://localhost:5173/`
 
 ## 7. Working process
 
@@ -91,6 +92,8 @@ Schedule (owner decision, 2026-10-30): **36 h building first, then 12 h testing 
 4. Anything broken, skipped, faked-for-demo or uncertain goes into `docs/KNOWN_ISSUES.md` immediately.
 5. After each milestone, stop and give the owner a short plain-language summary and ask before committing to git.
 6. Keep code simple and readable. Prefer one clear file over clever abstractions. Add tests for the safety score, opening hours and routing.
+
+Map rules: the background map is only a picture. Streets, scores, places and routes are drawn from ShadowMap's own data and routing runs in the backend, independent of the renderer. Never claim Google-Maps-level accuracy; data gaps are listed in `docs/DATA_GAPS.md`.
 
 ## 8. Key numbers (from BLUEPRINT.md — keep them in `backend/app/config.py`, not scattered)
 

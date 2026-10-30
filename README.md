@@ -43,6 +43,12 @@ The map uses real OpenStreetMap data, downloaded once and saved in `assets/demo-
   ```
 - Download fresh OpenStreetMap data (rarely needed, needs internet): `.venv/bin/python -m scripts.fetch_osm`, then `build_map`.
 
+## Background map
+
+The map is drawn with MapLibre GL JS using OpenFreeMap's free dark style (no API key, no Google services).
+To use another provider, copy `frontend/.env.example` to `frontend/.env` and set `VITE_MAP_STYLE_URL`.
+Known gaps in the local map data: [docs/DATA_GAPS.md](docs/DATA_GAPS.md).
+
 ## Run the tests
 
 ```bash

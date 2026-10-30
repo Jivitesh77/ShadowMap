@@ -7,7 +7,7 @@ ShadowMap uses free OpenStreetMap (OSM) data. Around IIIT Guwahati that data is 
 - Source file: `assets/demo-data/osm_2026-10-30T1233.json` (OSM data as of 2026-10-30 07:02 UTC; wider place search). The first download `osm_2026-10-30.json` is kept.
 - Demo area: 26.0714–26.0894 N, 91.5505–91.5705 E (about 2 km × 2 km around the campus)
 - Numbers below were measured on 2026-10-30 from the database built from that file.
-
+           
 ## Roads
 
 | What | Measured | What it means |

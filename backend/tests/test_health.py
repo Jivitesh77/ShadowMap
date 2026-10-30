@@ -20,3 +20,10 @@ def test_summary_counts_tables():
     assert res.status_code == 200
     for table in ["streets", "places", "observations", "reports", "walks", "alerts", "active_walks", "open_alerts"]:
         assert isinstance(res.json()[table], int)
+
+
+def test_root_points_to_the_app():
+    with TestClient(app) as client:
+        res = client.get("/")
+    assert res.status_code == 200
+    assert "localhost:5173" in res.json()["message"]

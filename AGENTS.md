@@ -24,7 +24,7 @@ If they conflict, the implementation plan wins for *how* to build; the blueprint
 5. **Do not deploy anything without asking the owner.** This includes hosting, public tunnels and pushing to GitHub.
 6. **Do not run destructive commands without asking** (`rm -rf`, `git reset --hard`, `git push --force`, dropping/deleting the database, overwriting data files).
 7. **Do not create `CLAUDE.md`.** The owner does not want it in the project; AGENTS.md is the only instruction file.
-8. **Before starting a server, check the port is free** (`ss -ltn | grep :8000`). Stop any server you started before ending your turn, or tell the owner it is still running — otherwise the owner's own start command fails with "Address already in use".
+8. **Do not start servers yourself.** The owner keeps the app running with `./start.sh`. When a check needs the running app, **tell the owner first** what you will test, then test against the owner's running servers (ports 8000 and 5173) without restarting them. The backend runs with `--reload`, so code changes apply by themselves. `pytest` and `npm run build` do not use ports and may be run any time.
 9. **Never call real emergency numbers in demo mode.** Help-call buttons use a team member's number while `DEMO_MODE=true`.
 10. **The AI describes places, never people.** No guessing age, gender, religion or intentions in any prompt or output.
 
@@ -73,8 +73,8 @@ shadowmap/
 ## 6. How to run
 
 - First time only: `cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && cp .env.example .env`, and `cd frontend && npm install`.
-- Backend: `cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000`
-- Frontend: `cd frontend && npm run dev` (open http://localhost:5173). Vite forwards `/api` and `/ws` to port 8000.
+- Everything at once: `./start.sh` from the project folder (Ctrl+C stops both). Open http://localhost:5173.
+- Separately: backend `cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000`; frontend `cd frontend && npm run dev`. Vite forwards `/api` and `/ws` to port 8000.
 - Backend tests: `cd backend && .venv/bin/pytest`
 - Frontend type-check + build: `cd frontend && npm run build`
 - Tables are created automatically at backend start (`init_db`). There are no migrations: if a model changes, ask the owner before deleting `backend/data/shadowmap.db`.

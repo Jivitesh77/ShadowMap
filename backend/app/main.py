@@ -26,6 +26,12 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root():
+    """The backend has no screens. Point people who open it in a browser to the app."""
+    return {"message": "ShadowMap backend is running. Open the app at http://localhost:5173"}
+
+
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)):
     """Is the server up and can it reach the database? Never returns secret values."""

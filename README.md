@@ -7,27 +7,19 @@ Full specification: [BLUEPRINT.md](BLUEPRINT.md) · Build plan: [docs/IMPLEMENTA
 
 ## Start the app
 
-You need two terminal windows: one for the backend (the server), one for the frontend (the screens).
-
-**Terminal 1 — backend**
+One command starts everything (backend server + frontend screens):
 
 ```bash
-cd ~/Projects/shadowmap/backend
-.venv/bin/uvicorn app.main:app --reload --port 8000
+cd ~/Projects/shadowmap
+./start.sh
 ```
 
-Wait for `Application startup complete.`
+Then open **http://localhost:5173** in your browser.
+Press `Ctrl + C` once in that terminal to stop everything.
 
-**Terminal 2 — frontend**
-
-```bash
-cd ~/Projects/shadowmap/frontend
-npm run dev
-```
-
-Then open **http://localhost:5173** in your browser. The sidebar (or the bottom tabs on a phone-sized window) switches between Walker, Sentinel, Trusted contact, Police and City.
-
-To stop either one: click its terminal and press `Ctrl + C`.
+Notes:
+- `http://localhost:8000` is the backend. It has no screens; it only answers the app's data requests.
+- If you see "Port ... is already in use", ShadowMap is already running in another terminal — use that one, or stop it there first.
 
 ## First-time setup (already done on the tech lead's laptop)
 

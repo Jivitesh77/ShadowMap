@@ -19,7 +19,7 @@ ShadowMap uses free OpenStreetMap (OSM) data. Around IIIT Guwahati that data is 
 | Roads touching the campus outline | 20 segments | Paths between campus buildings are probably not mapped (not verified on site) |
 | Disconnected group | 5 segments (1.9 km) in the south-east corner | Join the rest only outside the downloaded area; routes to them fail with a clear message |
 
-## Safe places
+## Places (help points and open places)
 
 | What | Measured |
 | --- | --- |
@@ -45,7 +45,7 @@ If a Google key is configured, the Walker panel can list extra nearby places fro
 
 ## How gaps get filled
 
-1. **Places checked in person** → `assets/demo-data/manual_places.json` (who checked, when, how), then `cd backend && .venv/bin/python -m scripts.build_map`. Shown on the map as "Manually added".
+1. **Places checked in person** → `assets/demo-data/manual_places.json` (who checked, when, how), then `cd backend && .venv/bin/python -m scripts.build_map`. Shown on the map with a white ring and labelled "ShadowMap verified".
 2. **Street conditions** (lighting, people, open shops) → Sentinel photos and community reports, not the map.
 3. **Missing roads/footpaths** → optional: a team member adds them to openstreetmap.org (public, free), then re-download with `scripts.fetch_osm`. Must be done **before** night-ride data is collected, because rebuilding the map changes street ids.
 

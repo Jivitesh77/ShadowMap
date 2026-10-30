@@ -4,7 +4,7 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-30 — M0–M5 + M7 built and verified with generated test clips; real night videos still to be tested. Next: M6 (Gemini analysis).
+Last updated: 2026-10-30 — Walker app complete (M8 briefing, M9 reports + help point) and verified; AI paths tested with simulated Gemini only (no key). Next: M6 (Gemini photo analysis, blur, deletion).
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
@@ -16,8 +16,8 @@ Last updated: 2026-10-30 — M0–M5 + M7 built and verified with generated test
 | M5 | Sentinel capture page (live) | P1 | 3 h | Done (verified) | Camera/GPS/rules/resize/upload/duplicates/status; tested with fake camera + simulated GPS and in pytest. Real phone over https: M12 |
 | M6 | AI analysis, live colours, blur, deletion | P1 | 4 h | Not started | Needs Gemini key |
 | M7 | Video mode | P1 | 2.5 h | Built — real-data check pending | Full pipeline verified on a generated 120 s test clip; assets/videos was empty, so the owner's footage is untested |
-| M8 | AI route briefing + voice | P1 | 2 h | Not started | Needs Gemini key |
-| M9 | Community reports + nearest safe spot | P1 | 2 h | Not started | |
+| M8 | AI route briefing + voice | P1 | 2 h | Built — real-AI check pending | Data summary EN/HI verified live; AI path + fact check verified with simulated Gemini; read-aloud runs (EN/HI voices found) |
+| M9 | Community reports + nearest help point | P1 | 2 h | Done (verified) | Reports change scores and routes; agreement, fading, limits; help point honest when nothing is known open |
 | M10 | Walk With Me + escalation + help bar | P1 | 5 h | Not started | Needs team member's demo phone number |
 | M11 | City dashboard + repair list | P2 | 1.5 h | Not started | |
 | M12 | Phone access (https), demo reset, README | P1 | 2.5 h | Not started | Needs owner's choice of https method |
@@ -152,3 +152,19 @@ Fixed: **High** — no access control + dev server on the whole network (access 
 Checked fine: photos/videos/DB/.env not downloadable (Vite /@fs → 403; backend on 127.0.0.1); delete keeps DB consistent; retention fields ready for M6.
 Live checks on the owner's app: no code → 401, wrong → 403, right → 200, status public; daytime photo with the right code refused (`outside_hours`); 0 observations in the database; access screen in the browser refuses a wrong code and opens with the right one.
 Owner action: restart `./start.sh` (frontend now local-only); the access code is in `backend/.env`.
+
+### 2026-10-30 — Walker application: briefing, reports, help point, observations (verified)
+Built:
+- Origin/destination: tap the map, **My location** (browser GPS, plain-language errors), or **Choose a place** (campus centre + named places in the area). Walk time: Now / Tonight 11:30 pm / any time.
+- **Briefing** (`POST /api/route/briefing`): route recalculated on the server; facts from real segments, places within 50 m, analysed observations and active reports. With a Gemini key: model `gemini-3.5-flash-lite` (checked 2026-10-30, configurable), JSON answer with fact ids per sentence, then a **fact check** (cited ids exist; no street/place name from the database that is not on the route; no number absent from the facts; never "safe"); one retry, else a summary built from the data. Without a key: data summary labelled "not AI". English and Hindi. Read aloud with the browser voice (stop/replay; message if no voice for the language).
+- **Community reports** (`POST/GET /api/reports`, public, no free text): broken light / dark / deserted / felt unsafe / well lit (blueprint §10 points and fade times), place closed / open (counts for 3 h either side of the report). Must be within 50 m of a street; one person cannot repeat (and so cannot "agree" with themselves) within an hour; 5 per device per hour; device ids never returned. Scores, routes and open panels refresh at once.
+- **Nearest help point** (`POST /api/help-point`, blueprint "nearest safe spot", renamed per owner rule 11): only places open at the walk time by listed hours or a recent report, reached by the safest route on mapped streets and drawn on the map; unknown-hours places listed separately ("may be closed"); places beyond the mapped streets listed with straight-line distance only.
+- **Street details**: score breakdown, freshness ("Map data only" / "Seen N min ago"), Sentinel observations (photos hidden until blurring), active reports with fade times. Street tooltips show freshness.
+- Mobile: map 56vh, big floating Help point / Report buttons that scroll to the panel, ≥40–48 px tap targets, scrollable time and filter rows.
+
+Checks run:
+- `pytest`: 71 passed (8 new: reports change scores −15 / −22.5 with two people and switch the safest route; duplicate/limit/validation; place report overrides hours only near its time; data briefing EN/HI with no outside names; AI answer accepted when correct and rejected for an off-route real place, an invented observation age, or "safe", plus Gemini errors → data summary; nearest help point never treats unknown hours as open).
+- Owner's app (read-only): briefing EN/HI for campus → Ranjeeta (1.25 km, 15 min, map data only, Ranjeeta + Canteen hours unknown); help point: "No place known to be open… can be reached", nearest unknown-hours Canteen 126 m, Dhanjeet, Jonmoni; beyond streets: 3 ATMs ~2.7 km.
+- All buttons on an **isolated copy** (backend 8001 on a database snapshot, frontend 5174) so the owner's data stayed unchanged (0 reports after): desktop and phone — My location, place list, comparison, briefing EN/HI + label, walk-time change, report via map tap → "score for your walk time is now 32" (phone run agreeing → 25), duplicate refused, help point, street panel with report, place "Closed now", floating buttons scroll to the panel; no JS errors; no sideways scrolling.
+Fixed during testing: report reply showed the score for "now" while the page showed tonight — it now uses the page's walk time.
+Not done: live Gemini (no key); Gemini photo analysis, blur, deletion (M6); real-phone test (M12).

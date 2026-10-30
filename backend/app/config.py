@@ -72,3 +72,7 @@ NIGHT_START_HOUR, NIGHT_END_HOUR = 18, 6  # India time
 MIN_MOVING_KMH = 5
 MAX_PLAUSIBLE_KMH = 150  # faster than this between two photos = GPS jump or spoofed position
 ORPHAN_UPLOAD_HOURS = 24  # uploaded videos never turned into a job are removed after this
+
+# --- Gemini (route briefing now; photo analysis in M6) ---
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()  # stable, fast model (checked 2026-10-30)
+GEMINI_TIMEOUT_S = 20

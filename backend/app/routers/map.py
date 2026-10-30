@@ -12,10 +12,9 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.services.geo import haversine_m, point_to_line_m
-from app.services.hours import status_at
 from app.services.places import confidence
 from app.services.scoring import StreetScore
-from app.services.street_state import score_streets
+from app.services.street_state import latest_place_reports, place_status, score_streets
 
 router = APIRouter(prefix="/api")
 
@@ -49,8 +48,9 @@ def parse_at(at: str | None) -> datetime:
         raise HTTPException(400, "Time must look like 2026-10-30T23:30 (India time).")
 
 
-def place_out(p: models.Place, at: datetime, center: list[float] | None) -> dict:
-    status, basis = status_at(p.opening_hours, p.category, at)
+def place_out(p: models.Place, at: datetime, center: list[float] | None, community: dict | None = None) -> dict:
+    status, basis = place_status(p, at, community or {})
+    report = (community or {}).get(p.id)
     level, reason = confidence(p.sources or [], p.name, p.verified_on, p.osm_last_edited, datetime.now(IST).date())
     return {
         "id": p.id,
@@ -74,6 +74,7 @@ def place_out(p: models.Place, at: datetime, center: list[float] | None) -> dict
         "match_note": p.match_note,
         "confidence": level,
         "confidence_reason": reason,
+        "community_report": ({"kind": report.kind, "created_at_utc": report.created_at.isoformat() + "Z"} if report else None),
         "distance_from_center_m": round(haversine_m(center[0], center[1], p.lat, p.lon)) if center else None,
     }
 
@@ -100,6 +101,7 @@ def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-3
     streets = db.scalars(select(models.Street)).all()
     places = db.scalars(select(models.Place)).all()
     scores = score_streets(db, when)
+    community = latest_place_reports(db)
     return {
         "at": when.isoformat(timespec="minutes"),
         "source": source,
@@ -117,7 +119,7 @@ def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-3
             }
             for s in streets
         ],
-        "places": [place_out(p, when, center) for p in places],
+        "places": [place_out(p, when, center, community) for p in places],
     }
 
 
@@ -129,10 +131,11 @@ def get_street(street_id: int, at: str | None = None, db: Session = Depends(get_
     when = parse_at(at)
     center = (map_source().get("area") or {}).get("center")
     nearby = []
+    community = latest_place_reports(db)
     for p in db.scalars(select(models.Place)).all():
         d = point_to_line_m(p.lat, p.lon, s.geometry)
         if d <= 200:
-            nearby.append({**place_out(p, when, center), "distance_m": round(d)})
+            nearby.append({**place_out(p, when, center, community), "distance_m": round(d)})
     nearby.sort(key=lambda p: p["distance_m"])
     observations = db.scalar(select(func.count()).select_from(models.Observation).where(models.Observation.street_id == s.id))
     reports = db.scalar(select(func.count()).select_from(models.Report).where(models.Report.street_id == s.id))

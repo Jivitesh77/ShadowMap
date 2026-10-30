@@ -1,7 +1,7 @@
 """Reads streets, places, photos and reports from the database and scores every street (blueprint §7)."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -33,10 +33,32 @@ class PlaceAt:
     basis: str
 
 
+COMMUNITY_PLACE_WINDOW_H = 3  # a "seen closed/open" report describes the place for 3 hours either side
+IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def latest_place_reports(db: Session) -> dict[int, models.Report]:
+    """Newest 'place closed' / 'place open' report for each place (blueprint §10: corrects hours until contradicted)."""
+    out: dict[int, models.Report] = {}
+    for r in db.scalars(select(models.Report).where(models.Report.kind.in_(["place_closed", "place_open"]),
+                                                    models.Report.place_id.is_not(None)).order_by(models.Report.created_at)).all():
+        out[r.place_id] = r
+    return out
+
+
+def place_status(p: models.Place, at: datetime, latest: dict[int, models.Report]) -> tuple[str, str]:
+    """Status at walk time `at` (India time). A recent community report wins over listed hours; never assumed open."""
+    r = latest.get(p.id)
+    if r and abs((r.created_at + IST_OFFSET) - at) <= timedelta(hours=COMMUNITY_PLACE_WINDOW_H):
+        return ("open" if r.kind == "place_open" else "closed"), "community"
+    return status_at(p.opening_hours, p.category, at)
+
+
 def places_at(db: Session, at: datetime) -> list[PlaceAt]:
+    latest = latest_place_reports(db)
     out = []
     for p in db.scalars(select(models.Place)).all():
-        status, basis = status_at(p.opening_hours, p.category, at)
+        status, basis = place_status(p, at, latest)
         out.append(PlaceAt(p, status, basis))
     return out
 

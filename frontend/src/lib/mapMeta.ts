@@ -68,6 +68,7 @@ export function statusExplanation(p: Pick<Place, 'status' | 'status_basis' | 'op
       ? 'No opening hours are listed. Places of this type are often open 24 hours, but that is not confirmed — treat as unknown.'
       : 'No opening hours are listed for this place.',
     unreadable: `Hours are listed (“${p.opening_hours}”) but in a format ShadowMap cannot read yet.`,
+    community: `Based on a recent report from someone at the place (it counts for 3 hours).`,
   }
   return map[p.status_basis]
 }

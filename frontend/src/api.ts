@@ -23,7 +23,7 @@ export interface Summary {
 
 export type RoadClass = 'main' | 'residential' | 'lane' | 'underpass'
 export type PlaceStatus = 'open' | 'closed' | 'unknown'
-export type StatusBasis = 'listed' | 'missing' | 'unreadable'
+export type StatusBasis = 'listed' | 'missing' | 'unreadable' | 'community'
 
 export interface Street {
   id: number
@@ -106,6 +106,7 @@ export interface Place {
   match_note: string | null
   confidence: Confidence
   confidence_reason: string
+  community_report: { kind: 'place_closed' | 'place_open'; created_at_utc: string } | null
   distance_from_center_m: number | null
   distance_m?: number
 }
@@ -168,6 +169,78 @@ export interface GoogleNearby {
   radius_m: number
   results: GooglePlace[]
   notes: string[]
+}
+
+// ---- Walker: briefing, reports, help point, observations ----
+export type Lang = 'en' | 'hi'
+export interface Briefing {
+  text: string
+  sentences: string[]
+  source: 'ai' | 'data'
+  note: string | null
+  lang: Lang
+  model: string | null
+}
+
+export type ReportKind = 'broken_light' | 'dark' | 'deserted' | 'felt_unsafe' | 'well_lit' | 'place_closed' | 'place_open'
+export interface ReportResult {
+  report_id: number
+  kind: ReportKind
+  fades_at_utc: string | null
+  street_id?: number
+  street_name?: string
+  effect_points?: number
+  street_score_now?: number
+  street_colour_now?: SafetyColour
+  place_id?: number
+  place_name?: string | null
+}
+export interface ActiveReport {
+  id: number
+  kind: ReportKind
+  age_min: number
+  fades_in_min: number | null
+}
+
+export interface HelpPlace {
+  id: number
+  name: string | null
+  category: string
+  status: PlaceStatus
+  status_basis?: string
+  walk_m?: number
+  walk_min?: number
+  straight_line_m?: number
+  geometry?: [number, number][]
+}
+export interface HelpPointResult {
+  at: string
+  best_open: HelpPlace | null
+  other_open: HelpPlace[]
+  unknown_hours: HelpPlace[]
+  outside_mapped_area: HelpPlace[]
+  message: string | null
+}
+
+export interface StreetObservation {
+  id: number
+  captured_age_min: number
+  sentinel_label: string
+  source: 'live' | 'video'
+  position_source: 'gps' | 'traced_route' | null
+  analysis_status: string
+  lighting: string | null
+  streetlights_visible: number | null
+  streetlights_working: number | null
+  people: string | null
+  open_places_count: number | null
+  vehicles: string | null
+  isolation: string | null
+  hazards: string[] | null
+  description: string | null
+  confidence: string | null
+  photo_available: boolean
+  photo_note: string
 }
 
 // ---- Sentinel ----
@@ -337,6 +410,15 @@ export const api = {
       method: 'DELETE',
       headers: accessHeaders(),
     }),
+  briefing: (start: LatLon, end: LatLon, lang: Lang, at?: string) =>
+    request<Briefing>('/api/route/briefing', { method: 'POST', body: JSON.stringify({ start, end, at, lang }) }, 45000),
+  report: (body: { kind: ReportKind; lat: number; lon: number; device_id: string; place_id?: number; at?: string }) =>
+    request<ReportResult>('/api/reports', { method: 'POST', body: JSON.stringify(body) }),
+  reports: (q: { street_id?: number; place_id?: number }) =>
+    request<{ reports: ActiveReport[] }>(`/api/reports?${new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)]))}`),
+  helpPoint: (p: LatLon, at?: string) =>
+    request<HelpPointResult>('/api/help-point', { method: 'POST', body: JSON.stringify({ ...p, at }) }, 30000),
+  streetObservations: (id: number) => request<{ observations: StreetObservation[] }>(`/api/streets/${id}/observations`),
   street: (id: number, at?: string) =>
     request<StreetDetail>(`/api/streets/${id}${at ? `?at=${encodeURIComponent(at)}` : ''}`),
 }

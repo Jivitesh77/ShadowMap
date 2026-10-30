@@ -2,9 +2,46 @@
 import type { LatLon, RouteResult, RouteSummary } from '../api'
 import { SAFETY_COLOURS, STATUS_LABEL, categoryMeta, formatAge, formatDistance } from '../lib/mapMeta'
 import { InfoIcon, RouteIcon, XIcon } from './Icons'
+import { BriefingPanel } from './BriefingPanel'
 import { ErrorState, Skeleton } from './States'
 
-export type PickTarget = 'start' | 'end' | null
+export type PickTarget = 'start' | 'end' | 'report' | 'help' | null
+
+export interface NamedPoint {
+  label: string
+  point: LatLon
+}
+
+function PointTools({
+  onMine,
+  places,
+  onChoose,
+  busy,
+}: {
+  onMine: () => void
+  places: NamedPoint[]
+  onChoose: (p: LatLon) => void
+  busy: boolean
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <button onClick={onMine} disabled={busy} className="min-h-10 rounded-lg border border-ink-700 text-xs text-ink-300 hover:bg-ink-800 disabled:opacity-50">
+        {busy ? 'Finding you…' : 'My location'}
+      </button>
+      <select
+        aria-label="Choose a place"
+        value=""
+        onChange={(e) => e.target.value !== '' && onChoose(places[Number(e.target.value)].point)}
+        className="min-h-10 rounded-lg border border-ink-700 bg-ink-900 px-2 text-xs text-ink-300"
+      >
+        <option value="">Choose a place…</option>
+        {places.map((p, i) => (
+          <option key={i} value={i}>{p.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
 
 function PointButton({
   label,
@@ -112,6 +149,11 @@ export function RoutePanel({
   loading,
   error,
   onRetry,
+  places,
+  onSet,
+  onMine,
+  locating,
+  at,
 }: {
   start: LatLon | null
   end: LatLon | null
@@ -122,6 +164,11 @@ export function RoutePanel({
   loading: boolean
   error: string | null
   onRetry: () => void
+  places: NamedPoint[]
+  onSet: (which: 'start' | 'end', p: LatLon) => void
+  onMine: (which: 'start' | 'end') => void
+  locating: 'start' | 'end' | null
+  at?: string
 }) {
   const passed = route?.safest.places_passed ?? []
   return (
@@ -140,13 +187,15 @@ export function RoutePanel({
 
       <div className="space-y-2">
         <PointButton label="Start" letter="A" value={start} active={picking === 'start'} onClick={() => setPicking(picking === 'start' ? null : 'start')} />
+        <PointTools onMine={() => onMine('start')} busy={locating === 'start'} places={places} onChoose={(p) => onSet('start', p)} />
         <PointButton label="Destination" letter="B" value={end} active={picking === 'end'} onClick={() => setPicking(picking === 'end' ? null : 'end')} />
+        <PointTools onMine={() => onMine('end')} busy={locating === 'end'} places={places} onChoose={(p) => onSet('end', p)} />
       </div>
 
       {!start && !end && !picking && (
         <p className="flex gap-2 text-sm text-ink-400">
           <RouteIcon size={18} className="shrink-0" />
-          Choose a start and a destination on the map. ShadowMap finds the shortest route and the safest one, on real streets.
+          Tap the A and B boxes, then tap the map — or use your location or a named place. ShadowMap finds the shortest route and the safest one, on real streets.
         </p>
       )}
 
@@ -161,6 +210,7 @@ export function RoutePanel({
       {route && !loading && !error && (
         <>
           <Comparison route={route} />
+          {start && end && <BriefingPanel start={start} end={end} at={at} />}
           {route.notes.length > 0 && (
             <ul className="space-y-2">
               {route.notes.map((n) => (

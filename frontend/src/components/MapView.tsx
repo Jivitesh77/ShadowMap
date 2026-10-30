@@ -4,7 +4,7 @@ import L from 'leaflet'
 import { useEffect, useMemo } from 'react'
 import { MapContainer, Marker, Polyline, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import type { LatLon, MapSource, Place, RouteResult, Street } from '../api'
-import { ROAD_CLASS, SAFETY_COLOURS, categoryMeta, placeName } from '../lib/mapMeta'
+import { ROAD_CLASS, SAFETY_COLOURS, categoryMeta, formatAge, placeName } from '../lib/mapMeta'
 import { tileProvider } from '../lib/mapProvider'
 
 export type Selection = { kind: 'street'; id: number } | { kind: 'place'; id: number } | null
@@ -21,7 +21,7 @@ function placeIcon(p: Place, selected: boolean) {
   })
 }
 
-function endpointIcon(label: 'A' | 'B') {
+function endpointIcon(label: 'A' | 'B' | 'R' | 'H') {
   return L.divIcon({
     className: '',
     html: `<div class="sm-endpoint">${label}</div>`,
@@ -71,6 +71,9 @@ export function MapView({
   start,
   end,
   route,
+  helpRoute = null,
+  reportPoint = null,
+  helpFrom = null,
 }: {
   source: MapSource
   streets: Street[]
@@ -82,6 +85,9 @@ export function MapView({
   start: LatLon | null
   end: LatLon | null
   route: RouteResult | null
+  helpRoute?: [number, number][] | null
+  reportPoint?: LatLon | null
+  helpFrom?: LatLon | null
 }) {
   const center = source.area?.center ?? [26.0804, 91.5605]
   const b = source.area?.bbox
@@ -156,7 +162,9 @@ export function MapView({
               },
             }}
           >
-            {!picking && <Tooltip sticky>{`${s.name || 'Unnamed road'}${s.score != null ? ` · ${Math.round(s.score)}` : ''}`}</Tooltip>}
+            {!picking && (
+              <Tooltip sticky>{`${s.name || 'Unnamed road'}${s.score != null ? ` · ${Math.round(s.score)}` : ''} · ${formatAge(s.freshest_photo_age_min)}`}</Tooltip>
+            )}
           </Polyline>,
         ]
       })}
@@ -195,6 +203,14 @@ export function MapView({
           />
         )
       })}
+      {helpRoute && helpRoute.length > 1 && (
+        <>
+          <Polyline positions={helpRoute} interactive={false} pathOptions={{ color: '#070c16', weight: 10, opacity: 0.8 }} />
+          <Polyline positions={helpRoute} interactive={false} pathOptions={{ color: '#60a5fa', weight: 5, dashArray: '8 6', lineCap: 'round' }} />
+        </>
+      )}
+      {reportPoint && <Marker position={[reportPoint.lat, reportPoint.lon]} icon={endpointIcon('R')} zIndexOffset={2000} interactive={false} />}
+      {helpFrom && <Marker position={[helpFrom.lat, helpFrom.lon]} icon={endpointIcon('H')} zIndexOffset={2000} interactive={false} />}
       {start && <Marker position={[start.lat, start.lon]} icon={endpointIcon('A')} zIndexOffset={2000} interactive={false} />}
       {end && <Marker position={[end.lat, end.lon]} icon={endpointIcon('B')} zIndexOffset={2000} interactive={false} />}
     </MapContainer>

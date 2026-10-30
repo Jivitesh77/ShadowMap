@@ -52,6 +52,10 @@ The map uses real OpenStreetMap data, downloaded once and saved in `assets/demo-
 - Places: OpenStreetMap + places the team checked in person (`assets/demo-data/manual_places.json`). Known gaps: [docs/DATA_GAPS.md](docs/DATA_GAPS.md).
 - Optional Google Places search: put a Google Places API (New) key in `backend/.env` as `GOOGLE_PLACES_API_KEY=...` (never in the frontend, never in chat). Results appear only in a separate "More places nearby — Google Maps" list, never on the map, and are not saved. Searches cost money beyond Google's free usage; set a budget alert in Google Cloud. Without a key the app works normally.
 
+## Walker (main screen)
+
+Set **A** (start) and **B** (destination) by tapping the map, **My location**, or **Choose a place**. Pick the walk time. ShadowMap shows the shortest and the safest route, a comparison, and a briefing you can hear in English or Hindi (AI-written once a Gemini key is set, otherwise a labelled summary from the data). The **Report** tab sends one-tap street reports; **Help point** finds the nearest place known to be open and draws the walk there.
+
 ## Sentinel videos
 
 Copy night-ride videos into `assets/videos/` (they are only read, never changed). Open **Sentinel → Video mode**, pick the video, tap the ride's route on the map, enter when it was recorded, and press **Process video**. Frames are taken every 5 seconds in the background and placed along the traced route (not GPS). They wait for AI analysis until a Gemini key is set.

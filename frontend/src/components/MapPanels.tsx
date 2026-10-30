@@ -1,6 +1,6 @@
 // Side panel content for the map: area overview, street details, place details.
 import type { ReactNode } from 'react'
-import { api, type MapData, type Place } from '../api'
+import { api, type MapData, type Place, type StreetObservation } from '../api'
 import { useApi } from '../hooks/useApi'
 import {
   CATEGORY_ORDER,
@@ -16,7 +16,10 @@ import {
   roadTypeLabel,
   statusExplanation,
 } from '../lib/mapMeta'
+import { useState } from 'react'
+import { deviceId } from '../lib/device'
 import { GooglePlacesPanel } from './GooglePlacesPanel'
+import { REPORT_LABEL } from './ReportPanel'
 import { InfoIcon, XIcon } from './Icons'
 import type { Selection } from './MapView'
 import { ErrorState, LoadingBlock } from './States'
@@ -76,7 +79,32 @@ function PanelHeader({ kicker, title, onClose }: { kicker: string; title: string
   )
 }
 
-export function PlaceInfo({ p, onClose }: { p: Place; onClose: () => void }) {
+function PlaceReport({ p, onReported }: { p: Place; onReported: () => void }) {
+  const [state, setState] = useState<{ busy: boolean; msg: string | null; err: string | null }>({ busy: false, msg: null, err: null })
+  const send = async (kind: 'place_closed' | 'place_open') => {
+    setState({ busy: true, msg: null, err: null })
+    try {
+      await api.report({ kind, lat: p.lat, lon: p.lon, device_id: deviceId(), place_id: p.id })
+      setState({ busy: false, msg: `Thanks — marked “${REPORT_LABEL[kind].toLowerCase()}” for the next few hours.`, err: null })
+      onReported()
+    } catch (e) {
+      setState({ busy: false, msg: null, err: (e as Error).message })
+    }
+  }
+  return (
+    <div className="mt-3 rounded-xl border border-ink-700 p-3">
+      <p className="text-xs text-ink-400">Are you here now? Tell others:</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button disabled={state.busy} onClick={() => send('place_closed')} className="min-h-10 rounded-lg border border-ink-600 text-sm disabled:opacity-50">Closed now</button>
+        <button disabled={state.busy} onClick={() => send('place_open')} className="min-h-10 rounded-lg border border-ink-600 text-sm disabled:opacity-50">Open now</button>
+      </div>
+      {state.msg && <p className="mt-2 text-xs text-ink-300" role="status">{state.msg}</p>}
+      {state.err && <p className="mt-2 text-xs text-danger" role="alert">{state.err}</p>}
+    </div>
+  )
+}
+
+export function PlaceInfo({ p, onClose, onReported }: { p: Place; onClose: () => void; onReported: () => void }) {
   const link = osmUrl(p.osm_id)
   return (
     <div>
@@ -127,7 +155,14 @@ export function PlaceInfo({ p, onClose }: { p: Place; onClose: () => void }) {
         <Row label="Last seen open">
           <span className="text-ink-400">No Sentinel photo yet</span>
         </Row>
+        {p.community_report && (
+          <Row label="Community report">
+            {REPORT_LABEL[p.community_report.kind]}
+            <span className="block text-xs text-ink-400">{formatDate(p.community_report.created_at_utc)}</span>
+          </Row>
+        )}
       </dl>
+      <PlaceReport p={p} onReported={onReported} />
       {link && (
         <a href={link} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm text-beacon-300 hover:underline">
           View on OpenStreetMap ↗
@@ -137,8 +172,65 @@ export function PlaceInfo({ p, onClose }: { p: Place; onClose: () => void }) {
   )
 }
 
-export function StreetInfo({ id, at, onClose, onPick }: { id: number; at?: string; onClose: () => void; onPick: (s: Selection) => void }) {
-  const { data: s, error, loading, reload } = useApi(() => api.street(id, at), undefined, `${id}|${at ?? ''}`)
+function describeObservation(o: StreetObservation): string {
+  if (o.analysis_status === 'pending') return 'Photo waiting for AI analysis'
+  if (o.analysis_status === 'unclear') return 'Photo was unclear and not used'
+  if (o.analysis_status === 'failed') return 'Analysis failed; photo not used'
+  const parts = [
+    o.lighting && `${o.lighting} lighting`,
+    o.streetlights_visible != null && `${o.streetlights_working ?? '?'} of ${o.streetlights_visible} streetlights working`,
+    o.people && `${o.people} people`,
+    o.open_places_count != null && `${o.open_places_count} open places`,
+  ].filter(Boolean)
+  return o.description || parts.join(', ')
+}
+
+function StreetEvidence({ id, refreshKey }: { id: number; refreshKey: string }) {
+  const obs = useApi(() => api.streetObservations(id), undefined, `${id}|${refreshKey}`)
+  const reps = useApi(() => api.reports({ street_id: id }), undefined, `${id}|${refreshKey}`)
+  return (
+    <>
+      <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-400">Sentinel observations</h3>
+      {obs.loading ? (
+        <LoadingBlock rows={2} />
+      ) : obs.error ? (
+        <ErrorState message={obs.error} onRetry={obs.reload} />
+      ) : !obs.data?.observations.length ? (
+        <p className="mt-2 text-sm text-ink-400">No Sentinel has passed this street yet. The score uses map data only.</p>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {obs.data.observations.map((o) => (
+            <li key={o.id} className="rounded-lg bg-ink-900/60 p-2.5 text-sm">
+              <p className="text-ink-100">{describeObservation(o)}</p>
+              <p className="mt-0.5 text-xs text-ink-400">
+                {formatAge(o.captured_age_min)} by {o.sentinel_label} · {o.source === 'video' ? 'video frame, position from traced route' : 'live photo, GPS'}
+              </p>
+            </li>
+          ))}
+          <li className="text-xs text-ink-400">{obs.data.observations[0].photo_note}</li>
+        </ul>
+      )}
+      <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-400">Community reports (active)</h3>
+      {reps.data && reps.data.reports.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-sm">
+          {reps.data.reports.map((r) => (
+            <li key={r.id} className="flex justify-between gap-2">
+              <span className="text-ink-100">{REPORT_LABEL[r.kind]}</span>
+              <span className="shrink-0 text-xs text-ink-400">
+                {r.age_min} min ago{r.fades_in_min != null ? ` · fades in ${r.fades_in_min >= 120 ? `${Math.round(r.fades_in_min / 60)} h` : `${r.fades_in_min} min`}` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-ink-400">{reps.loading ? 'Loading…' : 'None right now.'}</p>
+      )}
+    </>
+  )
+}
+
+export function StreetInfo({ id, at, onClose, onPick, refreshKey = '' }: { id: number; at?: string; onClose: () => void; onPick: (s: Selection) => void; refreshKey?: string }) {
+  const { data: s, error, loading, reload } = useApi(() => api.street(id, at), undefined, `${id}|${at ?? ''}|${refreshKey}`)
   if (error) return <ErrorState message={error} onRetry={reload} />
   if (loading || !s) return <LoadingBlock label="Loading street…" rows={5} />
   return (
@@ -180,9 +272,8 @@ export function StreetInfo({ id, at, onClose, onPick }: { id: number; at?: strin
         <Row label="Street lighting">
           {s.lit === 'yes' ? 'Mapped as lit' : s.lit === 'no' ? 'Mapped as unlit' : <span className="text-ink-400">Not recorded</span>}
         </Row>
-        <Row label="Sentinel photos">{s.observations}</Row>
-        <Row label="Community reports">{s.reports}</Row>
       </dl>
+      <StreetEvidence id={id} refreshKey={refreshKey} />
       <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-400">Places within 200 m</h3>
       {s.nearby_places.length === 0 ? (
         <p className="mt-2 text-sm text-ink-400">None recorded.</p>

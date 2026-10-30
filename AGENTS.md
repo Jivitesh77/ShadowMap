@@ -79,6 +79,7 @@ shadowmap/
 - Separately: backend `cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000`; frontend `cd frontend && npm run dev`. Vite forwards `/api` and `/ws` to port 8000.
 - Map data: `cd backend && .venv/bin/python -m scripts.build_map` (offline, from `assets/demo-data/`). `scripts.fetch_osm` downloads from Overpass only when asked.
 - Backend tests: `cd backend && .venv/bin/pytest`
+- Testing buttons that **write data** (reports, uploads): never on the owner's database. Use an isolated copy: `sqlite3 backend/data/shadowmap.db ".backup '<scratch>/shadowmap.db'"`, then `DATABASE_URL=sqlite:///<scratch>/shadowmap.db START_WORKERS=0 .venv/bin/uvicorn app.main:app --port 8001` and `SM_API_TARGET=http://localhost:8001 npx vite --port 5174`. Stop both afterwards.
 - Frontend type-check + build: `cd frontend && npm run build`
 - Tables are created automatically at backend start (`init_db`). There are no migrations: if a model changes, ask the owner before deleting `backend/data/shadowmap.db`.
 - Visual check without the Chrome extension: `google-chrome-stable --headless=new --screenshot=out.png --window-size=1440,900 --virtual-time-budget=5000 http://localhost:5173/`
@@ -97,7 +98,8 @@ Schedule (owner decision, 2026-10-30): **36 h building first, then 12 h testing 
 Map and place rules (owner decisions, 2026-10-30):
 - Map tiles are only a picture. Streets, scores, places and routes come from ShadowMap's own data; routing runs in the backend, independent of the renderer. Never claim Google-Maps-level accuracy; gaps are in `docs/DATA_GAPS.md`.
 - **Never assume a place is open because hours are missing** (overrides blueprint §4's 24 h default for police/hospital/hotel). Missing = "unknown".
-- **Never call a place "safe"** because of its category. Use neutral words ("place", "help point", "places passed (not closed)").
+- **Never call a place "safe"** because of its category. Use neutral words ("place", "help point", "places passed (not closed)"). The blueprint's "nearest safe spot" is the **Help point**.
+- The route briefing may only state facts from `build_facts`; AI text must pass `check_ai_text`, otherwise the labelled data summary is shown.
 - **Google Places content is never drawn on the Leaflet/OSM map, never merged with our places, never stored or cached** (only place IDs may be kept; we keep none). Shown only in the separate list with "Google Maps" attribution and "Open in Google Maps" links. Key only in `backend/.env`. Without a key everything else must work.
 - Team-verified places go in `assets/demo-data/manual_places.json` (who, when, how) — never copied from Google.
 

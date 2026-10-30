@@ -107,7 +107,8 @@ Sentinel security rules (audit 2026-10-30, `docs/SECURITY_AUDIT_M05_M07.md`):
 - Every `/api/sentinel/*` endpoint except `/status` needs the access code (`SENTINEL_TOKEN`, header `X-Sentinel-Token`). New Sentinel endpoints must use `dependencies=PROTECTED`.
 - Night and moving rules are enforced by the server, not only the browser. Never trust the browser alone for a rule.
 - Photos and videos are never served without blurring (M6). `assets/videos/` is git-ignored and never modified.
-- A failed job must leave nothing half-done. Every stored photo/video has a delete time.
+- A failed job must leave nothing half-done. Every stored photo/video has a delete time, enforced by `services/retention.py` (walk personal data: 24 h after the walk).
+- Deployment files exist (`render.yaml`, `backend/Dockerfile`, `frontend/vercel.json`, `docs/DEPLOYMENT.md`) but **nothing is deployed without the owner's explicit go**.
 - `npm run dev` is local-only; `npm run dev:lan` exposes the app to the network — use only when needed.
 
 ## 8. Key numbers (from BLUEPRINT.md — keep them in `backend/app/config.py`, not scattered)

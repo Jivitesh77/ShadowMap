@@ -59,4 +59,9 @@ Status values: Open · Workaround · Resolved · Accepted (stays for the demo, e
 | 51 | **Walk With Me screens not yet clicked through on real phones** (backend sequence verified in tests and live). | UI bugs possible. | Open | Owner test plan tomorrow: walker phone + contact phone + police laptop. |
 | 52 | **DEMO_CALL_NUMBER is empty**: help-call buttons then dial nothing and say so. | No ringing phone in the demo. | Open | Put a team member's number in `backend/.env`, restart. |
 | 53 | **Route-use counts grow on every route request** (also page refreshes). | Repair ranking slightly inflated. | Accepted | Relative order still meaningful. |
-| 54 | **Walk records (names, phones, positions) are kept in the database** after a walk. | Personal data retention. | Open | Add deletion after 24 h (testing phase). |
+| 54 | ~~Walk records kept forever~~ | — | Resolved | Personal data removed 24 h after a walk ends; photos/uploads deleted at their delete time (`services/retention.py`). |
+| 55 | **Docker image not test-built** (Docker service was not running on the laptop). | First deploy may fail at build. | Open | Run `docker build -f backend/Dockerfile -t shadowmap-backend .` before deploying. |
+| 56 | **Render persistent disk needs a paid instance**; free instances also sleep. | Cost / cold start. | Open | Owner decides; see docs/DEPLOYMENT.md. |
+| 57 | **No rate limit on route / walk-creation endpoints.** | Someone could flood the server. | Accepted | Prototype; add limits before any public use. |
+| 58 | **Main frontend bundle ~506 kB** (150 kB compressed). | Slightly slow first load on weak mobile data. | Accepted | Fine on Wi-Fi/hotspot. |
+| 59 | **No WebSockets**: live screens poll every 3–5 s. | Up to a few seconds' delay. | Accepted | Simpler and recovers by itself after outages. |

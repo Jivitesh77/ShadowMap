@@ -1,5 +1,5 @@
 // City / municipality dashboard (blueprint §11): dark-street hotspots and a ranked streetlight repair list.
-import { api } from '../api'
+import { API_BASE, api } from '../api'
 import { useApi } from '../hooks/useApi'
 import { LightbulbIcon } from '../components/Icons'
 import { EmptyState, ErrorState, LoadingBlock } from '../components/States'
@@ -16,7 +16,7 @@ export default function CityPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <PageHeader eyebrow="Operations" title="City dashboard"
         description="Dark streets and broken streetlights, with evidence, ranked by how many people walk or route through them — fixing those helps the most people first."
-        aside={<a href="/api/city/repairs.csv" download className="rounded-lg bg-beacon-400 px-4 py-2 text-sm font-semibold text-ink-950">Download CSV</a>} />
+        aside={<a href={`${API_BASE}/api/city/repairs.csv`} download className="rounded-lg bg-beacon-400 px-4 py-2 text-sm font-semibold text-ink-950">Download CSV</a>} />
 
       {r.error && !d ? <ErrorState message={r.error} onRetry={r.reload} /> : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

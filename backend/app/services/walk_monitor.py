@@ -5,6 +5,7 @@ import logging
 import threading
 
 from app.db import SessionLocal, utcnow
+from app.services import retention
 from app.services.walks import evaluate_all
 
 log = logging.getLogger("shadowmap.walks")
@@ -23,12 +24,16 @@ class WalkMonitor:
         self._stop.set()
 
     def _run(self) -> None:
+        rounds = 0
         while not self._stop.wait(self.every_s):
             try:
                 with SessionLocal() as db:
                     evaluate_all(db, utcnow())
+                    if rounds % 150 == 0:  # about every 5 minutes: delete expired photos/videos, anonymise old walks
+                        retention.run(db, utcnow())
             except Exception:  # keep the clock running even if one round fails
                 log.exception("walk monitor round failed")
+            rounds += 1
 
 
 monitor = WalkMonitor()

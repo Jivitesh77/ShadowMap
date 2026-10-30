@@ -29,8 +29,9 @@ DEMO_MODE = _bool("DEMO_MODE", True)
 DEMO_CALL_NUMBER = os.getenv("DEMO_CALL_NUMBER", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
-# Frontend addresses allowed to call the API during development.
-CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+# Website addresses allowed to call the API from another origin (comma-separated). In production the frontend host
+# forwards /api to the backend, so this is normally only needed for local development.
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]
 
 # --- Safety score (blueprint §7) ---
 SCORE_GREEN_MIN = 70
@@ -55,8 +56,10 @@ GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "").strip()
 GOOGLE_PLACES_MAX_PER_HOUR = int(os.getenv("GOOGLE_PLACES_MAX_PER_HOUR", "30"))  # protects the billing account
 
 # --- Sentinel photos and videos ---
-PHOTO_DIR = BACKEND_DIR / "data" / "photos"  # all Sentinel images (git-ignored; deleted after PHOTO_KEEP_HOURS)
-VIDEO_DIR = BACKEND_DIR / "data" / "videos"  # uploaded videos (assets/videos is only read, never changed)
+# Where photos and uploaded videos are stored. On a host, point DATA_DIR at a persistent disk (e.g. /var/data).
+DATA_DIR = Path(os.getenv("DATA_DIR", str(BACKEND_DIR / "data")))
+PHOTO_DIR = DATA_DIR / "photos"  # all Sentinel images (git-ignored; deleted after PHOTO_KEEP_HOURS)
+VIDEO_DIR = DATA_DIR / "videos"  # uploaded videos (assets/videos is only read, never changed)
 ASSET_VIDEO_DIR = BACKEND_DIR.parent / "assets" / "videos"
 START_WORKERS = _bool("START_WORKERS", True)  # background video queue; tests turn it off and run jobs directly
 LIVE_MAX_GPS_ACCURACY_M = 50  # ignore readings with poorer accuracy (blueprint §20)

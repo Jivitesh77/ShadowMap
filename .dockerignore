@@ -1,0 +1,10 @@
+# Keep secrets, local data and footage out of the image
+**/.env
+**/.venv
+backend/data
+frontend
+assets/videos
+assets/images
+.git
+**/__pycache__
+**/.pytest_cache

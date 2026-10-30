@@ -14,13 +14,13 @@ Last updated: 2026-10-30 — Walker app complete (M8 briefing, M9 reports + help
 | M3 | Safety score + street colours | P1 | 1.5 h | Done (verified) | Full §7 formula incl. photo score, freshness, reports, clamp; 11 scoring tests |
 | M4 | Route finder (shortest vs safest) | P1 | 3 h | Done (verified) | Dijkstra both costs, 50% limit, comparison card; 10 routing + 1 API test; real routes on campus |
 | M5 | Sentinel capture page (live) | P1 | 3 h | Done (verified) | Camera/GPS/rules/resize/upload/duplicates/status; tested with fake camera + simulated GPS and in pytest. Real phone over https: M12 |
-| M6 | AI analysis, live colours, blur, deletion | P1 | 4 h | Not started | Needs Gemini key |
+| M6 | AI analysis, live colours, blur, deletion | P1 | 4 h | Partly: deletion done | Gemini photo analysis and blurring **not built** (no key); automatic deletion built and tested |
 | M7 | Video mode | P1 | 2.5 h | Built — real-data check pending | Full pipeline verified on a generated 120 s test clip; assets/videos was empty, so the owner's footage is untested |
 | M8 | AI route briefing + voice | P1 | 2 h | Built — real-AI check pending | Data summary EN/HI verified live; AI path + fact check verified with simulated Gemini; read-aloud runs (EN/HI voices found) |
 | M9 | Community reports + nearest help point | P1 | 2 h | Done (verified) | Reports change scores and routes; agreement, fading, limits; help point honest when nothing is known open |
-| M10 | Walk With Me + escalation + help bar | P1 | 5 h | Not started | Needs team member's demo phone number |
-| M11 | City dashboard + repair list | P2 | 1.5 h | Not started | |
-| M12 | Phone access (https), demo reset, README | P1 | 2.5 h | Not started | Needs owner's choice of https method |
+| M10 | Walk With Me + escalation + help bar | P1 | 5 h | Done (backend verified) | UI click-through on phones in the testing phase; DEMO_CALL_NUMBER still empty |
+| M11 | City dashboard + repair list | P2 | 1.5 h | Done (verified) | Ranked list, hotspots, CSV |
+| M12 | Phone access (https), demo reset, README | P1 | 2.5 h | Prepared, not deployed | Render + Vercel files, README, checklists; owner decides on deployment |
 
 ## Log
 
@@ -173,3 +173,11 @@ Not done: live Gemini (no key); Gemini photo analysis, blur, deletion (M6); real
 Built: start/end walk (end needs PIN), up to 3 trusted contacts, unguessable contact link `/trip/<id>` (watch-only), private walker token, live positions (GPS or demo "simulated walk" with stand-still / off-route buttons), server clock every 2 s: stopped / off-route (checked first) / late → "Are you safe?" → contacts → police; PIN and duress PIN (looks like cancel, silently escalates; walker screen stays calm); SOS straight to police; battery-low notice; arrival "reached safely" stops sharing; link expires 1 h after the end. Help bar (112 hold 1 s, 181, nearest police, contact, fake call) — in DEMO_MODE every call rings DEMO_CALL_NUMBER only; contacts told "X is calling …". Where-am-I card. Police dashboard (POLICE_TOKEN, simulated label): active/history, reasons, live/last-moved/alert positions, route, status New→Acknowledged→Unit sent→Resolved, history. City dashboard: hotspots, ranked repair list (walks/routes through, nights dark, independent reporters), evidence (photos after blurring), CSV export. Demo timers: stop 15 s, off-route 15 s, late 60 s, ask 20 s, contacts→police 30 s (configurable).
 Checks: `pytest` 79 passed (8 new incl. full 3-device escalation, duress, SOS, off-route, late without repeat, battery, arrival, PIN for end, link expiry, access control, where-am-i, repair list + CSV). Live on an isolated copy with the real background clock: ask 18 s → contacts 38 s → police 68 s; police API shows the alert; /trip, /police, /city pages load. Owner's database untouched.
 Not yet done: click-through of the new screens on two phones (owner, tomorrow); DEMO_CALL_NUMBER not set; M6 (Gemini photo analysis, blur, deletion) and M12 (https for phones) still open.
+
+### 2026-10-30 — Final integration audit and deployment preparation
+Full report: `docs/FINAL_AUDIT.md`. No new features except automatic deletion (required by blueprint §6/§13, was missing).
+Fixed: photos/uploads never deleted and walk personal data kept forever (critical privacy) → `services/retention.py` + test; production API address (`VITE_API_BASE`) and `CORS_ORIGINS`; `DATA_DIR`; safe first-start map build (`build_map --if-empty`).
+Prepared (not deployed): `backend/Dockerfile` (Python 3.14 + FFmpeg; not test-built — Docker not running), `.dockerignore`, `render.yaml` (Docker service, 1 instance, persistent disk at /var/data), `frontend/vercel.json`, `frontend/.env.example`, `docs/DEPLOYMENT.md`.
+Docs: README rewritten (setup, settings, demo script, limitations), `docs/TESTING_CHECKLIST.md` (laptop, Android Chrome, iPhone Safari, police, failure drills, showcase morning).
+Checks: `pytest` 80 passed; `npm run build` passes; production build served cross-origin against an isolated backend copy — every page loads at phone and laptop size, no JS errors, no failed requests, CORS refuses other sites, trip page shows live dot + ALERT banner. Owner's database untouched.
+**Not production-ready.** Open: M6 (Gemini photo analysis + blurring), real videos, real Gemini, real phones, Docker build, actual deployment.

@@ -1,72 +1,107 @@
 # ShadowMap
 
-A live map of how safe each street is at night, for IIIT Guwahati and the surrounding area.
-It routes people along the safest path, explains the route in plain words, and watches over them until they arrive.
+A showcase **prototype** of a night-safety map for **IIIT Guwahati and the surrounding area**.
+It colours streets by how safe they look at night, compares the shortest and the safest walking route, explains the route in plain words (English or Hindi), lets a trusted contact follow a walk live, and escalates to a (simulated) police dashboard if the walker stops answering.
 
-Full specification: [BLUEPRINT.md](BLUEPRINT.md) · Build plan: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) · Progress: [docs/SPRINT_STATUS.md](docs/SPRINT_STATUS.md)
+> **This is not production software.** It is a student prototype for a showcase. It has not been security-audited by a third party, has no user accounts, uses shared access codes, and the police integration is simulated. Do not rely on it for anyone's real safety.
 
-## Start the app
+Specification: [BLUEPRINT.md](BLUEPRINT.md) · Progress: [docs/SPRINT_STATUS.md](docs/SPRINT_STATUS.md) · Known issues: [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) · Map data gaps: [docs/DATA_GAPS.md](docs/DATA_GAPS.md) · Final audit: [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md) · Manual tests: [docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md) · Deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
-One command starts everything (backend server + frontend screens):
+## What works (and how far it was tested)
 
-```bash
-cd ~/Projects/shadowmap
-./start.sh
-```
+| Part | State |
+| --- | --- |
+| Map of the area (Leaflet + OpenStreetMap), place markers, open / closed / hours unknown | Working, tested |
+| Street safety scores, shortest vs safest route (Dijkstra), comparison | Working, tested |
+| Community reports (change scores and routes), nearest help point | Working, tested |
+| Route briefing EN/HI + read aloud | Working as a **data summary**; the Gemini-written version is tested only with simulated answers (no key yet) |
+| Sentinel live photos + video mode (FFmpeg, background queue) | Working with generated test clips; **owner's night videos not yet run**; live camera not yet tried on a real phone |
+| Gemini photo analysis, face/plate blurring, photo display | **Not built (milestone M6).** Photos wait as "pending" and never change scores |
+| Walk With Me (stop / off-route / late → Are you safe? → contacts → police, PIN, duress PIN, SOS, help bar, Where am I) | Backend fully tested incl. the live background clock; screens still to be clicked through on phones |
+| Contact trip page, police dashboard (simulated), city dashboard + CSV | Working, smoke-tested in the production build |
+| Automatic deletion (photos 6 h, uploaded videos 6 h, walk personal data 24 h after the walk) | Working, tested |
 
-Then open **http://localhost:5173** in your browser (works on this laptop only).
-Press `Ctrl + C` once in that terminal to stop everything.
+## Run it on your laptop
 
-The **Sentinel** page asks for an access code. It is in `backend/.env`; show it with `grep SENTINEL_TOKEN ~/Projects/shadowmap/backend/.env`.
-To test Live mode in daytime or on foot, set `SENTINEL_ENFORCE_NIGHT=false` / `SENTINEL_ENFORCE_MOVING=false` in `backend/.env` and restart (set back to `true` afterwards).
+You need Python 3.12+ (tested on 3.14), Node.js 20+ (tested on 26), FFmpeg, and Git.
 
-Notes:
-- `http://localhost:8000` is the backend. It has no screens; it only answers the app's data requests.
-- If you see "Port ... is already in use", ShadowMap is already running in another terminal — use that one, or stop it there first.
-
-## First-time setup (already done on the tech lead's laptop)
-
+**First time only:**
 ```bash
 cd ~/Projects/shadowmap/backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env          # then fill in the values you have (see below)
+.venv/bin/python -m scripts.build_map --if-empty
 
 cd ~/Projects/shadowmap/frontend
 npm install
 ```
 
+**Every time:**
+```bash
+cd ~/Projects/shadowmap
+./start.sh
+```
+Open **http://localhost:5173** (this laptop only). `Ctrl + C` stops everything.
+For phones on the same Wi-Fi, see [docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md) section 0 (camera and GPS still need https).
+
+## Settings (environment variables)
+
+Secrets live **only** in `backend/.env` (git-ignored) or in the hosting dashboard — never in frontend code, chat or git.
+Full lists with comments: [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example).
+
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `SENTINEL_TOKEN` | backend | Access code for the Sentinel page (photos, videos, rider routes). Required. |
+| `POLICE_TOKEN` | backend | Access code for the police dashboard. Required. |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | backend | AI briefing (and M6 photo analysis). Optional: without it a labelled data summary is used. |
+| `GOOGLE_PLACES_API_KEY` | backend | Optional extra place list (separate panel, never on the map, never stored). Costs money. |
+| `DEMO_MODE` | backend | `true`: shortened walk timers; help-call buttons ring `DEMO_CALL_NUMBER`, **never** 112/181/100. |
+| `DEMO_CALL_NUMBER` | backend | A team member's phone for demo help calls. Empty = buttons dial nothing. |
+| `SENTINEL_ENFORCE_NIGHT`, `SENTINEL_ENFORCE_MOVING` | backend | Blueprint capture rules, enforced by the server. `false` only while testing in daytime / on foot. |
+| `DATA_DIR`, `DATABASE_URL` | backend | Where the database, photos and uploads live (a persistent disk when hosted). |
+| `CORS_ORIGINS` | backend | Frontend address(es) allowed to call the backend when hosted separately. |
+| `WALK_STOP_S`, `WALK_ASK_S`, `WALK_CONTACTS_TO_POLICE_S`, … | backend | Override Walk With Me timers (seconds). |
+| `VITE_API_BASE` | frontend | Backend address when hosted (empty locally). |
+| `VITE_TILE_URL`, `VITE_TILE_ATTRIBUTION` | frontend | Optional other tile server (never Google tiles). |
+
+Show an access code: `grep SENTINEL_TOKEN ~/Projects/shadowmap/backend/.env` (or `POLICE_TOKEN`). Changes to `.env` need a restart of `./start.sh`.
+
 ## Map data
 
-The map uses real OpenStreetMap data, downloaded once and saved in `assets/demo-data/`. The demo never downloads it again.
+Real OpenStreetMap data, downloaded once and saved in `assets/demo-data/` — the demo never downloads it again.
+- Add a place the team checked in person: edit `assets/demo-data/manual_places.json` (instructions inside), then `cd backend && .venv/bin/python -m scripts.build_map` (only possible before any Sentinel photos or reports exist).
+- Fresh OpenStreetMap download (rarely needed): `.venv/bin/python -m scripts.fetch_osm`, then `build_map`.
 
-- Add a place the team checked in person: edit `assets/demo-data/manual_places.json` (instructions are inside), then rebuild:
-  ```bash
-  cd ~/Projects/shadowmap/backend && .venv/bin/python -m scripts.build_map
-  ```
-- Download fresh OpenStreetMap data (rarely needed, needs internet): `.venv/bin/python -m scripts.fetch_osm`, then `build_map`.
+## Demo instructions (blueprint §16, about 5 minutes)
 
-## Map and places
+**Before:** section 6 of the [testing checklist](docs/TESTING_CHECKLIST.md). Set `DEMO_CALL_NUMBER`. Charge phones. If hosted, open the site 10 minutes early.
+**Roles:** presenter, laptop operator (map + police + city dashboards), walker phone, contact phone.
 
-- Map: Leaflet with OpenStreetMap tiles. Other tile server: copy `frontend/.env.example` to `frontend/.env` and set `VITE_TILE_URL`.
-- Places: OpenStreetMap + places the team checked in person (`assets/demo-data/manual_places.json`). Known gaps: [docs/DATA_GAPS.md](docs/DATA_GAPS.md).
-- Optional Google Places search: put a Google Places API (New) key in `backend/.env` as `GOOGLE_PLACES_API_KEY=...` (never in the frontend, never in chat). Results appear only in a separate "More places nearby — Google Maps" list, never on the map, and are not saved. Searches cost money beyond Google's free usage; set a budget alert in Google Cloud. Without a key the app works normally.
+1. **Walker → "Tonight 11:30 pm".** Coloured streets; places show *open / closed / hours unknown* (never assumed open).
+2. **Route tab:** A = "IIIT Guwahati (campus centre)", B = a place (e.g. Ranjeeta). Show shortest vs safest.
+3. **Hear the briefing** in English, then हिन्दी. Point out its label (AI fact-checked, or "data summary, not AI").
+4. **Report tab** (or a judge on their phone): "Dark here" on a street of the route → it turns red; route and briefing update.
+5. **Start Walk With Me** on the walker phone (contact = roommate, PIN, duress PIN, tick *simulate walk*); share the link to the contact phone.
+6. **Help bar:** 112 (hold), 181, Police, Fake call — in demo mode it rings the team phone and tells the contact.
+7. **"Demo: stand still"** → 15 s: *Are you safe?* → no answer → 20 s: **contact phone turns red** → 30 s: **police dashboard** alert with live position and route. Acknowledged → Unit sent.
+8. Enter the **PIN** → resolved, contact sees "False alarm". (Optional: duress PIN — walker screen stays calm, contact and police see DURESS.)
+9. **City dashboard:** the reported street in the ranked repair list; Download CSV.
+10. Close: *"Google Maps knows the shortest way home. ShadowMap knows the safest way home, as of ten minutes ago."* Be honest that AI photo analysis is the next milestone (M6).
 
-## Walker (main screen)
+## Known limitations (full list: docs/KNOWN_ISSUES.md)
 
-Set **A** (start) and **B** (destination) by tapping the map, **My location**, or **Choose a place**. Pick the walk time. ShadowMap shows the shortest and the safest route, a comparison, and a briefing you can hear in English or Hindi (AI-written once a Gemini key is set, otherwise a labelled summary from the data). The **Report** tab sends one-tap street reports; **Help point** finds the nearest place known to be open and draws the walk there.
+- **No AI photo analysis yet (M6):** street colours come from map data and community reports only; Sentinel photos wait as "pending".
+- **Thin OpenStreetMap data around campus:** no footpaths, 6 of 73 street segments named, no police/hospital/pharmacy/petrol pump inside the area, 1 of 27 places lists opening hours. Nothing is invented.
+- **Police integration is simulated.** No SMS/WhatsApp: contacts see alerts on the trip page only.
+- **Video positions are estimated** along the traced route (steady speed), not GPS.
+- **Phones need https** for camera and GPS. Over plain http use the *simulated walk*.
+- **Shared access codes**, public community reports (limited per device), one server process with SQLite.
+- Not tested yet: real night videos, real Gemini, real Android/iPhone, the Docker image build, a real hosted deployment.
 
-## Sentinel videos
-
-Copy night-ride videos into `assets/videos/` (they are only read, never changed). Open **Sentinel → Video mode**, pick the video, tap the ride's route on the map, enter when it was recorded, and press **Process video**. Frames are taken every 5 seconds in the background and placed along the traced route (not GPS). They wait for AI analysis until a Gemini key is set.
-
-## Run the tests
+## Tests
 
 ```bash
-cd ~/Projects/shadowmap/backend && .venv/bin/pytest
-cd ~/Projects/shadowmap/frontend && npm run build
+cd ~/Projects/shadowmap/backend && .venv/bin/pytest      # 80 automated tests
+cd ~/Projects/shadowmap/frontend && npm run build        # type-check + production build
 ```
-
-## Secrets
-
-Keys go only in `backend/.env`, which is never saved to git. Never put keys in the frontend, in docs, or in chat.

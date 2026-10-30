@@ -1,5 +1,9 @@
 // The ONLY place in the frontend that talks to the backend.
 import { accessHeaders } from './lib/sentinelAccess'
+
+// Backend address. Empty in development (Vite forwards /api to port 8000). In production set VITE_API_BASE,
+// e.g. https://shadowmap-backend.onrender.com, and allow the frontend's address in the backend's CORS_ORIGINS.
+export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
 // Addresses are relative (/api/...): in development Vite forwards them to the backend on port 8000.
 
 export interface Health {
@@ -410,7 +414,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000, i
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let res: Response
   try {
-    res = await fetch(path, {
+    res = await fetch(API_BASE + path, {
       ...init,
       signal: controller.signal,
       headers: isForm ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
@@ -451,7 +455,7 @@ async function requestForm<T>(path: string, form: FormData, timeoutMs = 30000): 
 function uploadVideo(file: File, onProgress: (f: number) => void): Promise<CheckedVideo> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', '/api/sentinel/videos/uploads')
+    xhr.open('POST', API_BASE + '/api/sentinel/videos/uploads')
     Object.entries(accessHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v))
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
     xhr.onload = () => {

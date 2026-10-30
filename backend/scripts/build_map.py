@@ -188,6 +188,12 @@ def merge_verified(osm_places: list[models.Place], verified: list[dict]) -> tupl
 
 
 def main() -> int:
+    if "--if-empty" in sys.argv:  # used at server start on a host: fill a new database, never rebuild a used one
+        init_db()
+        with Session(engine) as db:
+            if db.scalar(select(func.count()).select_from(models.Street)):
+                print("Map data already present; nothing to do.")
+                return 0
     src = latest_osm_file()
     data = json.loads(src.read_text())
     area = data["shadowmap"]["area"]

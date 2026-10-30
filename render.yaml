@@ -1,0 +1,39 @@
+# Render Blueprint for the ShadowMap backend. NOT deployed yet — the owner decides.
+# A persistent disk keeps the SQLite database, photos and uploads across restarts and deploys
+# (Render's normal filesystem is wiped on every deploy). Disks need a paid instance type.
+services:
+  - type: web
+    name: shadowmap-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: starter
+    numInstances: 1          # one process: SQLite + background clock
+    healthCheckPath: /api/health
+    disk:
+      name: shadowmap-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: DATABASE_URL
+        value: sqlite:////var/data/shadowmap.db
+      - key: DEMO_MODE
+        value: "true"
+      - key: SENTINEL_ENFORCE_NIGHT
+        value: "true"
+      - key: SENTINEL_ENFORCE_MOVING
+        value: "true"
+      - key: CORS_ORIGINS
+        sync: false          # e.g. https://shadowmap.vercel.app (only needed if the frontend calls the backend directly)
+      - key: SENTINEL_TOKEN
+        sync: false          # secret: set in the Render dashboard
+      - key: POLICE_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: DEMO_CALL_NUMBER
+        sync: false

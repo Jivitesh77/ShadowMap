@@ -1,4 +1,5 @@
 // The ONLY place in the frontend that talks to the backend.
+import { currentCity, withCity } from './lib/city'
 import { accessHeaders } from './lib/sentinelAccess'
 
 // Backend address. Empty in development (Vite forwards /api to port 8000). In production set VITE_API_BASE,
@@ -12,6 +13,19 @@ export interface Health {
   demo_mode: boolean
   gemini_configured: boolean
   server_time_utc: string
+}
+
+export interface CityInfo {
+  id: string
+  name: string
+  center: [number, number] | null
+  bbox: { south: number; west: number; north: number; east: number } | null
+  has_map_data: boolean
+}
+
+export interface CitiesInfo {
+  default: string
+  cities: CityInfo[]
 }
 
 export interface Summary {
@@ -116,6 +130,8 @@ export interface Place {
 }
 
 export interface MapSource {
+  city?: string
+  centre_label?: string
   file?: string
   downloaded_at_utc?: string
   osm_data_timestamp?: string
@@ -243,7 +259,9 @@ export interface StreetObservation {
   hazards: string[] | null
   description: string | null
   confidence: string | null
+  uncertainty: string | null
   photo_available: boolean
+  photo_url: string | null
   photo_note: string
 }
 
@@ -264,7 +282,7 @@ export interface WalkConfig {
 }
 export interface WalkerState {
   walk_id: string
-  status: 'active' | 'checking' | 'alert' | 'arrived' | 'ended'
+  status: 'active' | 'checking' | 'alert' | 'arrived' | 'ended' | 'expired'
   asking: boolean
   trigger: string | null
   check_started_utc: string | null
@@ -276,6 +294,10 @@ export interface WalkerState {
   contacts: { name: string; phone: string | null }[]
   simulated: boolean
   timers: WalkTimers
+  last_position_utc: string | null
+  last_accuracy_m: number | null
+  sharing: boolean
+  pin_locked_until_utc: string | null
 }
 export interface WalkEvent {
   at: string
@@ -284,7 +306,6 @@ export interface WalkEvent {
 }
 export interface ContactView {
   walker_name: string
-  walker_phone: string | null
   status: WalkerState['status']
   duress: boolean
   escalation: number
@@ -293,7 +314,7 @@ export interface ContactView {
   expected_arrival_utc: string | null
   ended_utc: string | null
   route: [number, number][] | null
-  dest: [number, number]
+  dest: [number, number] | null
   last: [number, number] | null
   last_position_utc: string | null
   battery_pct: number | null
@@ -347,7 +368,7 @@ export interface RepairItem {
   routes_planned_through: number
   status: string
   latest_dark_utc: string | null
-  evidence: { observation_id: number; captured_utc: string; sentinel: string; lighting: string | null; description: string | null; photo_available: boolean }[]
+  evidence: { observation_id: number; captured_utc: string; sentinel: string; lighting: string | null; description: string | null; photo_available: boolean; photo_url: string | null }[]
 }
 
 // ---- Sentinel ----
@@ -477,10 +498,11 @@ function uploadVideo(file: File, onProgress: (f: number) => void): Promise<Check
 
 export const api = {
   health: () => request<Health>('/api/health', undefined, 4000),
-  summary: () => request<Summary>('/api/summary'),
-  map: (at?: string) => request<MapData>(`/api/map${at ? `?at=${encodeURIComponent(at)}` : ''}`),
+  summary: () => request<Summary>(withCity('/api/summary')),
+  cities: () => request<CitiesInfo>('/api/cities'),
+  map: (at?: string) => request<MapData>(withCity(`/api/map${at ? `?at=${encodeURIComponent(at)}` : ''}`)),
   route: (start: LatLon, end: LatLon, at?: string) =>
-    request<RouteResult>('/api/route', { method: 'POST', body: JSON.stringify({ start, end, at }) }, 20000),
+    request<RouteResult>('/api/route', { method: 'POST', body: JSON.stringify({ start, end, at, city: currentCity() }) }, 20000),
   googleStatus: () => request<{ configured: boolean; attribution: string }>('/api/google-places/status'),
   googleNearby: (lat: number, lon: number, radius_m: number) =>
     request<GoogleNearby>('/api/google-places/nearby', { method: 'POST', body: JSON.stringify({ lat, lon, radius_m }) }, 15000),
@@ -497,7 +519,7 @@ export const api = {
   traceRoute: (waypoints: [number, number][]) =>
     request<{ geometry: [number, number][]; length_m: number; streets: number }>('/api/sentinel/trace', {
       method: 'POST',
-      body: JSON.stringify({ waypoints }),
+      body: JSON.stringify({ waypoints, city: currentCity() }),
       headers: accessHeaders(),
     }),
   createVideoJob: (body: {
@@ -509,7 +531,7 @@ export const api = {
     ride_start_s?: number | null
     ride_end_s?: number | null
     frame_interval_s?: number
-  }) => request<VideoJob>('/api/sentinel/videos/jobs', { method: 'POST', body: JSON.stringify(body), headers: accessHeaders() }, 60000),
+  }) => request<VideoJob>('/api/sentinel/videos/jobs', { method: 'POST', body: JSON.stringify({ ...body, city: currentCity() }), headers: accessHeaders() }, 60000),
   videoJobs: () => request<{ jobs: VideoJob[] }>('/api/sentinel/videos/jobs', { headers: accessHeaders() }),
   videoJob: (id: number) => request<VideoJob>(`/api/sentinel/videos/jobs/${id}`, { headers: accessHeaders() }),
   deleteVideoJob: (id: number) =>
@@ -518,13 +540,13 @@ export const api = {
       headers: accessHeaders(),
     }),
   briefing: (start: LatLon, end: LatLon, lang: Lang, at?: string) =>
-    request<Briefing>('/api/route/briefing', { method: 'POST', body: JSON.stringify({ start, end, at, lang }) }, 45000),
+    request<Briefing>('/api/route/briefing', { method: 'POST', body: JSON.stringify({ start, end, at, lang, city: currentCity() }) }, 45000),
   report: (body: { kind: ReportKind; lat: number; lon: number; device_id: string; place_id?: number; at?: string }) =>
-    request<ReportResult>('/api/reports', { method: 'POST', body: JSON.stringify(body) }),
+    request<ReportResult>('/api/reports', { method: 'POST', body: JSON.stringify({ ...body, city: currentCity() }) }),
   reports: (q: { street_id?: number; place_id?: number }) =>
     request<{ reports: ActiveReport[] }>(`/api/reports?${new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)]))}`),
   helpPoint: (p: LatLon, at?: string) =>
-    request<HelpPointResult>('/api/help-point', { method: 'POST', body: JSON.stringify({ ...p, at }) }, 30000),
+    request<HelpPointResult>('/api/help-point', { method: 'POST', body: JSON.stringify({ ...p, at, city: currentCity() }) }, 30000),
   streetObservations: (id: number) => request<{ observations: StreetObservation[] }>(`/api/streets/${id}/observations`),
   walkConfig: () => request<WalkConfig>('/api/walks/config'),
   startWalk: (body: {
@@ -536,26 +558,26 @@ export const api = {
     start: LatLon
     end: LatLon
     simulated: boolean
-  }) => request<{ walk_id: string; walker_token: string; contact_path: string; expected_arrival_utc: string }>('/api/walks', { method: 'POST', body: JSON.stringify(body) }, 30000),
+  }) => request<{ walk_id: string; walker_token: string; contact_path: string; expected_arrival_utc: string }>('/api/walks', { method: 'POST', body: JSON.stringify({ ...body, city: currentCity() }) }, 30000),
   walkState: (id: string, token: string) => request<WalkerState>(`/api/walks/${id}/state`, { headers: { 'X-Walk-Token': token } }),
-  walkPosition: (id: string, token: string, p: LatLon & { battery_pct?: number }) =>
+  walkPosition: (id: string, token: string, p: LatLon & { battery_pct?: number; accuracy_m?: number }) =>
     request<WalkerState>(`/api/walks/${id}/position`, { method: 'POST', body: JSON.stringify(p), headers: { 'X-Walk-Token': token } }),
   walkSafe: (id: string, token: string, pin: string) =>
     request<WalkerState & { ok: boolean }>(`/api/walks/${id}/safe`, { method: 'POST', body: JSON.stringify({ pin }), headers: { 'X-Walk-Token': token } }),
   walkSos: (id: string, token: string) => request<{ ok: boolean }>(`/api/walks/${id}/sos`, { method: 'POST', headers: { 'X-Walk-Token': token } }),
-  walkEnd: (id: string, token: string, pin: string) =>
-    request<{ ok: boolean }>(`/api/walks/${id}/end`, { method: 'POST', body: JSON.stringify({ pin }), headers: { 'X-Walk-Token': token } }),
+  walkEnd: (id: string, token: string, pin: string, revoke = false) =>
+    request<{ ok: boolean }>(`/api/walks/${id}/end`, { method: 'POST', body: JSON.stringify({ pin, revoke }), headers: { 'X-Walk-Token': token } }),
   walkNote: (id: string, token: string, target: '112' | '181' | 'police' | 'contact' | 'fake') =>
     request<{ ok: boolean }>(`/api/walks/${id}/note`, { method: 'POST', body: JSON.stringify({ kind: 'calling', target }), headers: { 'X-Walk-Token': token } }),
   contactView: (id: string) => request<ContactView>(`/api/walks/${id}/contact`),
-  whereAmI: (p: LatLon, at?: string) => request<WhereAmI>('/api/where-am-i', { method: 'POST', body: JSON.stringify({ ...p, at }) }),
+  whereAmI: (p: LatLon, at?: string) => request<WhereAmI>('/api/where-am-i', { method: 'POST', body: JSON.stringify({ ...p, at, city: currentCity() }) }),
   policeAlerts: (code: string, scope: 'active' | 'history') =>
-    request<{ simulated: boolean; alerts: PoliceAlert[] }>(`/api/police/alerts?scope=${scope}`, { headers: { 'X-Police-Token': code } }),
+    request<{ simulated: boolean; alerts: PoliceAlert[] }>(withCity(`/api/police/alerts?scope=${scope}`), { headers: { 'X-Police-Token': code } }),
   policeStatus: (code: string, id: number, status: 'acknowledged' | 'unit_sent' | 'resolved') =>
-    request<PoliceAlert>(`/api/police/alerts/${id}/status`, { method: 'POST', body: JSON.stringify({ status }), headers: { 'X-Police-Token': code } }),
+    request<PoliceAlert>(withCity(`/api/police/alerts/${id}/status`), { method: 'POST', body: JSON.stringify({ status }), headers: { 'X-Police-Token': code } }),
   policeCoverage: (code: string) =>
-    request<{ streets_seen_last_hour: number; streets_in_area: number }>('/api/police/coverage', { headers: { 'X-Police-Token': code } }),
-  cityRepairs: () => request<{ generated_utc: string; items: RepairItem[]; hotspots: RepairItem[]; note: string }>('/api/city/repairs'),
+    request<{ streets_seen_last_hour: number; streets_in_area: number }>(withCity('/api/police/coverage'), { headers: { 'X-Police-Token': code } }),
+  cityRepairs: () => request<{ generated_utc: string; items: RepairItem[]; hotspots: RepairItem[]; note: string }>(withCity('/api/city/repairs')),
   street: (id: number, at?: string) =>
     request<StreetDetail>(`/api/streets/${id}${at ? `?at=${encodeURIComponent(at)}` : ''}`),
 }

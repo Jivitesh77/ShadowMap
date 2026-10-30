@@ -16,8 +16,8 @@ Specification: [BLUEPRINT.md](BLUEPRINT.md) · Progress: [docs/SPRINT_STATUS.md]
 | Community reports (change scores and routes), nearest help point | Working, tested |
 | Route briefing EN/HI + read aloud | Working as a **data summary**; the Gemini-written version is tested only with simulated answers (no key yet) |
 | Sentinel live photos + video mode (FFmpeg, background queue) | Working with generated test clips; **owner's night videos not yet run**; live camera not yet tried on a real phone |
-| Gemini photo analysis, face/plate blurring, photo display | **Not built (milestone M6).** Photos wait as "pending" and never change scores |
-| Walk With Me (stop / off-route / late → Are you safe? → contacts → police, PIN, duress PIN, SOS, help bar, Where am I) | Backend fully tested incl. the live background clock; screens still to be clicked through on phones |
+| Gemini photo analysis, face/plate blurring, photo display (M6) | Built: local blurring (YuNet + Haar), Gemini analysis of blurred copies, fail-closed approval, 6-h deletion. Tested with synthetic images and simulated Gemini only; needs a Gemini key and real night photos. See [docs/PHOTO_PRIVACY.md](docs/PHOTO_PRIVACY.md) |
+| Walk With Me (stop / off-route / late / battery → Are you safe? → contacts → police; PIN, duress PIN, SOS, help bar, Where am I; end & stop sharing, revoke link) | **Implemented and tested** in the backend (lifecycle, escalation, access control, revocation/expiry, GPS accuracy, duplicate alerts, PIN lock-out, deletion) incl. the live background clock. **Police: implemented but simulated.** **Needs real Android/iPhone testing** (GPS, screen sleep, background) |
 | Contact trip page, police dashboard (simulated), city dashboard + CSV | Working, smoke-tested in the production build |
 | Automatic deletion (photos 6 h, uploaded videos 6 h, walk personal data 24 h after the walk) | Working, tested |
 
@@ -73,6 +73,24 @@ Real OpenStreetMap data, downloaded once and saved in `assets/demo-data/` — th
 - Add a place the team checked in person: edit `assets/demo-data/manual_places.json` (instructions inside), then `cd backend && .venv/bin/python -m scripts.build_map` (only possible before any Sentinel photos or reports exist).
 - Fresh OpenStreetMap download (rarely needed): `.venv/bin/python -m scripts.fetch_osm`, then `build_map`.
 
+### Two demo cities
+
+| City | Area | Data folder |
+| --- | --- | --- |
+| **IIIT Guwahati** (default) | ~2 × 2 km around the campus | `assets/demo-data/` |
+| **Aastha Kunj, Delhi** | ~4 × 4 km around Aastha Kunj Park (Lotus Temple, ISKCON, Kalkaji Mandir, Nehru Place, East of Kailash) | `assets/demo-data/delhi/` |
+
+- **Switch city:** use the **Demo area** menu at the bottom of the left sidebar (on phones, the menu in the top bar). The page reloads, then the map, scores, places, reports, routes, help point and dashboards all belong to the chosen city. You can also open a link such as `http://localhost:5173/?city=delhi`. Switching is disabled during a Walk With Me walk.
+- Each city has its own streets, places and routing network. A report or photo always belongs to one street, so it can never appear in the other city.
+- **Build one city:** `cd backend && .venv/bin/python -m scripts.build_map --city delhi`. Use `--all` to build every city. A city that already has reports or photos is never rebuilt.
+- **Download one city again:** `.venv/bin/python -m scripts.fetch_osm --city delhi`.
+- **Delhi demo routes** (tap these points on the map, or use "Choose a place"):
+  1. Aastha Kunj Park → Nehru Place metro station (~960 m)
+  2. Lotus Temple → Kalkaji Mandir (~900 m)
+  3. ISKCON → East of Kailash (~700 m)
+  4. Aastha Kunj Park → Kalkaji residential area (~2.3 km). On this route, the safest route differs from the shortest.
+- Delhi data sources, counts and gaps: [docs/DATA_GAPS.md](docs/DATA_GAPS.md) (second half).
+
 ## Demo instructions (blueprint §16, about 5 minutes)
 
 **Before:** section 6 of the [testing checklist](docs/TESTING_CHECKLIST.md). Set `DEMO_CALL_NUMBER`. Charge phones. If hosted, open the site 10 minutes early.
@@ -87,13 +105,16 @@ Real OpenStreetMap data, downloaded once and saved in `assets/demo-data/` — th
 7. **"Demo: stand still"** → 15 s: *Are you safe?* → no answer → 20 s: **contact phone turns red** → 30 s: **police dashboard** alert with live position and route. Acknowledged → Unit sent.
 8. Enter the **PIN** → resolved, contact sees "False alarm". (Optional: duress PIN — walker screen stays calm, contact and police see DURESS.)
 9. **City dashboard:** the reported street in the ranked repair list; Download CSV.
-10. Close: *"Google Maps knows the shortest way home. ShadowMap knows the safest way home, as of ten minutes ago."* Be honest that AI photo analysis is the next milestone (M6).
+10. Close: *"Google Maps knows the shortest way home. ShadowMap knows the safest way home, as of ten minutes ago."* Be honest: photo analysis runs only with a Gemini key, and face/plate detection has not been measured on real night photos (Indian plates especially).
 
 ## Known limitations (full list: docs/KNOWN_ISSUES.md)
 
-- **No AI photo analysis yet (M6):** street colours come from map data and community reports only; Sentinel photos wait as "pending".
+- **Photo analysis needs a Gemini key:** without it photos are blurred but stay private and do not affect scores. Only analysed **and** privacy-approved photos count. Conservative rule: photos with vehicles where no plate was blurred stay private; Indian plate detection is not reliable, so expect many night photos to stay private. Detection accuracy on real photos is unmeasured.
+- **Delhi has no Sentinel photos and no team-checked places yet:** every Delhi score is a map-only baseline, and most places show "Hours unknown" at night (only 139 of 1,442 list hours). With ~1,400 markers the Delhi map is busy; hide "Shops & food" with its chip.
 - **Thin OpenStreetMap data around campus:** no footpaths, 6 of 73 street segments named, no police/hospital/pharmacy/petrol pump inside the area, 1 of 27 places lists opening hours. Nothing is invented.
-- **Police integration is simulated.** No SMS/WhatsApp: contacts see alerts on the trip page only.
+- **Police integration is simulated.** No SMS/WhatsApp: contacts see alerts on the trip page only, and only if they keep it open.
+- **Browsers may pause a page in the background** (screen off, app switched, especially on iPhone). Positions then stop; the server treats that like "stopped" and asks/escalates. Background tracking is **not** guaranteed.
+- **Anyone holding a trip link can watch that walk** while it runs (no login). The walker can end it and switch the link off at once.
 - **Video positions are estimated** along the traced route (steady speed), not GPS.
 - **Phones need https** for camera and GPS. Over plain http use the *simulated walk*.
 - **Shared access codes**, public community reports (limited per device), one server process with SQLite.
@@ -102,6 +123,6 @@ Real OpenStreetMap data, downloaded once and saved in `assets/demo-data/` — th
 ## Tests
 
 ```bash
-cd ~/Projects/shadowmap/backend && .venv/bin/pytest      # 80 automated tests
+cd ~/Projects/shadowmap/backend && .venv/bin/pytest      # 148 automated tests
 cd ~/Projects/shadowmap/frontend && npm run build        # type-check + production build
 ```

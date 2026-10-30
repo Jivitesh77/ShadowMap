@@ -54,10 +54,12 @@ def place_status(p: models.Place, at: datetime, latest: dict[int, models.Report]
     return status_at(p.opening_hours, p.category, at)
 
 
-def places_at(db: Session, at: datetime) -> list[PlaceAt]:
+def places_at(db: Session, at: datetime, city: str | None = None) -> list[PlaceAt]:
+    """Places with their status at the walk time. city=None means the default city (never all cities mixed)."""
+    from app.services.cities import default_city
     latest = latest_place_reports(db)
     out = []
-    for p in db.scalars(select(models.Place)).all():
+    for p in db.scalars(select(models.Place).where(models.Place.city == (city or default_city()))).all():
         status, basis = place_status(p, at, latest)
         out.append(PlaceAt(p, status, basis))
     return out
@@ -68,16 +70,53 @@ def _bbox(geometry: list[list[float]]) -> tuple[float, float, float, float]:
     return min(lats) - _DEG_200M, max(lats) + _DEG_200M, min(lons) - _DEG_200M, max(lons) + _DEG_200M
 
 
-def score_streets(db: Session, at: datetime, now: datetime | None = None) -> dict[int, StreetScore]:
-    """Score of every street for a walk at `at` (India time, decides open/closed).
+_NEARBY_CACHE: dict[str, tuple[tuple, dict[int, list[tuple[int, float]]]]] = {}
+
+
+def _nearby_places(db: Session, city: str, streets: list[models.Street], places: list[models.Place]) -> dict[int, list[tuple[int, float]]]:
+    """(place id, distance) of places within the help radius of each street. Depends only on geometry,
+    so it is computed once per map build (the fingerprint changes when build_map replaces a city's rows)."""
+    fingerprint = (len(streets), max((s.id for s in streets), default=0), round(sum(s.length_m for s in streets), 1),
+                   len(places), max((p.id for p in places), default=0), round(sum(p.lat + p.lon for p in places), 6),
+                   tuple(sorted({p.category for p in places})))
+    cached = _NEARBY_CACHE.get(city)
+    if cached and cached[0] == fingerprint:
+        return cached[1]
+    grid: dict[tuple[int, int], list[models.Place]] = {}  # places by ~280 m cell, so dense cities stay fast
+    for p in places:
+        grid.setdefault((int(p.lat // _DEG_200M), int(p.lon // _DEG_200M)), []).append(p)
+    out: dict[int, list[tuple[int, float]]] = {}
+    for s in streets:
+        s0, s1, w0, w1 = _bbox(s.geometry)
+        near = []
+        for i in range(int(s0 // _DEG_200M), int(s1 // _DEG_200M) + 1):
+            for j in range(int(w0 // _DEG_200M), int(w1 // _DEG_200M) + 1):
+                for p in grid.get((i, j), []):
+                    if s0 <= p.lat <= s1 and w0 <= p.lon <= w1:
+                        d = point_to_line_m(p.lat, p.lon, s.geometry)
+                        if d <= HELP_RADIUS_M:
+                            near.append((p.id, d))
+        out[s.id] = near
+    _NEARBY_CACHE[city] = (fingerprint, out)
+    return out
+
+
+def score_streets(db: Session, at: datetime, city: str | None = None, now: datetime | None = None) -> dict[int, StreetScore]:
+    """Score of every street of one city for a walk at `at` (India time, decides open/closed).
     Photo and report ages are measured from `now` (UTC), i.e. how old the information is."""
+    from app.services.cities import default_city
+    city = city or default_city()
     now = now or utcnow()
-    places = places_at(db, at)
+    places = {pa.place.id: pa for pa in places_at(db, at, city)}
+    streets = db.scalars(select(models.Street).where(models.Street.city == city)).all()
+    nearby_ids = _nearby_places(db, city, streets, [pa.place for pa in places.values()])
 
     photos: dict[int, list[Photo]] = {}
     for o in db.scalars(
         select(models.Observation)
-        .where(models.Observation.analysis_status == "done", models.Observation.street_id.is_not(None))
+        # Only analysed AND privacy-approved observations count (failed, pending, private ones never affect scores)
+        .where(models.Observation.analysis_status == "done", models.Observation.photo_public.is_(True),
+               models.Observation.street_id.is_not(None))
         .order_by(models.Observation.captured_at.desc())
     ).all():
         lst = photos.setdefault(o.street_id, [])
@@ -86,21 +125,14 @@ def score_streets(db: Session, at: datetime, now: datetime | None = None) -> dic
         s = o.photo_score
         if s is None:
             s = photo_score(PhotoFields(o.lighting, o.people, o.open_places_count, o.vehicles, o.isolation, o.hazards))
-        lst.append(Photo(s, (now - o.captured_at).total_seconds() / 60, o.lighting))
+        lst.append(Photo(s, (now - o.captured_at).total_seconds() / 60, o.lighting, uncertain=o.confidence == "low"))
 
     reports: dict[int, list[ReportIn]] = {}
     for r in db.scalars(select(models.Report).where(models.Report.street_id.is_not(None))).all():
         reports.setdefault(r.street_id, []).append(ReportIn(r.kind, (now - r.created_at).total_seconds() / 60))
 
     out = {}
-    for s in db.scalars(select(models.Street)).all():
-        s0, s1, w0, w1 = _bbox(s.geometry)
-        nearby = []
-        for pa in places:
-            p = pa.place
-            if s0 <= p.lat <= s1 and w0 <= p.lon <= w1:
-                d = point_to_line_m(p.lat, p.lon, s.geometry)
-                if d <= HELP_RADIUS_M:
-                    nearby.append(NearbyPlace(p.category, pa.status, d))
+    for s in streets:
+        nearby = [NearbyPlace(places[pid].place.category, places[pid].status, d) for pid, d in nearby_ids.get(s.id, [])]
         out[s.id] = street_score(map_score(s.road_class, nearby), photos.get(s.id, []), reports.get(s.id, []))
     return out

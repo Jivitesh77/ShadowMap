@@ -74,10 +74,10 @@ export function statusExplanation(p: Pick<Place, 'status' | 'status_basis' | 'op
 }
 
 export const ROAD_CLASS: Record<RoadClass, { label: string; color: string; weight: number; dash?: string }> = {
-  main: { label: 'Main road', color: '#d6deeb', weight: 5 },
-  residential: { label: 'Residential street', color: '#8b9bb8', weight: 3.5 },
-  lane: { label: 'Lane or footpath', color: '#6a7a98', weight: 2.5, dash: '6 5' },
-  underpass: { label: 'Underpass', color: '#6a7a98', weight: 3, dash: '2 6' },
+  main: { label: 'Main road', color: '#8a8fae', weight: 5 },
+  residential: { label: 'Residential street', color: '#a3a7c2', weight: 3.5 },
+  lane: { label: 'Lane or footpath', color: '#b3b6cc', weight: 2.5, dash: '6 5' },
+  underpass: { label: 'Underpass', color: '#b3b6cc', weight: 3, dash: '2 6' },
 }
 
 const ROAD_TYPE: Record<string, string> = {
@@ -105,6 +105,9 @@ export function formatDistance(m: number): string {
 export function osmUrl(osmId: string | null): string | null {
   return osmId ? `https://www.openstreetmap.org/${osmId}` : null
 }
+
+// Route line colours on the light map (accent = the route ShadowMap suggests).
+export const ROUTE_COLOURS = { safest: '#5a5fc8', shortest: '#7c8099', halo: '#ffffff', help: '#2f80ed', walk: '#5a5fc8' }
 
 // Street safety colours (blueprint §7): 70-100 green, 40-69 yellow, 0-39 red.
 export const SAFETY_COLOURS: Record<SafetyColour, string> = { green: '#22c55e', yellow: '#eab308', red: '#ef4444' }

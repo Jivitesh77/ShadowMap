@@ -41,12 +41,12 @@ export function TraceMap({
       <Fit data={data} />
       <Clicks onAdd={onAdd} />
       {data.streets.map((s) => (
-        <Polyline key={s.id} positions={s.geometry} interactive={false} pathOptions={{ color: '#8b9bb8', weight: 3, opacity: 0.7 }} />
+        <Polyline key={s.id} positions={s.geometry} interactive={false} pathOptions={{ color: '#a3a7c2', weight: 3, opacity: 0.8 }} />
       ))}
       {path && (
         <>
-          <Polyline positions={path} interactive={false} pathOptions={{ color: '#070c16', weight: 10, opacity: 0.8 }} />
-          <Polyline positions={path} interactive={false} pathOptions={{ color: '#f5b83d', weight: 5 }} />
+          <Polyline positions={path} interactive={false} pathOptions={{ color: '#ffffff', weight: 10, opacity: 0.95 }} />
+          <Polyline positions={path} interactive={false} pathOptions={{ color: '#5a5fc8', weight: 5 }} />
         </>
       )}
       {points.map((p, i) => (

@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Code and the saved OpenStreetMap data (assets/demo-data). Night-ride videos are not part of the image.
 COPY backend/app ./app
 COPY backend/scripts ./scripts
+COPY backend/models ./models
 COPY assets/demo-data /app/assets/demo-data
 
 # Data (database, photos, uploads) lives on a persistent disk mounted at /var/data.
@@ -20,4 +21,4 @@ ENV DATA_DIR=/var/data \
 EXPOSE 8000
 
 # One process only: the walk clock, video queue and duplicate lock assume a single server process.
-CMD ["sh", "-c", "mkdir -p $DATA_DIR && python -m scripts.build_map --if-empty && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers"]
+CMD ["sh", "-c", "mkdir -p $DATA_DIR && python -m scripts.build_map --all --if-empty && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers"]

@@ -1,7 +1,7 @@
 """Download the demo area's streets and safe places from OpenStreetMap ONCE and save them.
 
-Run:  cd backend && .venv/bin/python -m scripts.fetch_osm
-Saves assets/demo-data/osm_<date>.json. Never overwrites an existing file.
+Run:  cd backend && .venv/bin/python -m scripts.fetch_osm [--city delhi]   (default: the default city, Guwahati)
+Saves osm_<date>.json in that city's folder (assets/demo-data/ or assets/demo-data/<city>/). Never overwrites.
 The demo itself never downloads map data; it reads the saved file via build_map.
 """
 
@@ -49,8 +49,11 @@ def build_query(area: dict) -> str:
 
 
 def main() -> int:
-    area = json.loads((DEMO_DATA / "area.json").read_text())
-    out = DEMO_DATA / f"osm_{datetime.now().strftime('%Y-%m-%dT%H%M')}.json"
+    from app.services.cities import city_dir, default_city
+    city = sys.argv[sys.argv.index("--city") + 1] if "--city" in sys.argv else default_city()
+    folder = city_dir(city)
+    area = json.loads((folder / "area.json").read_text())
+    out = folder / f"osm_{datetime.now().strftime('%Y-%m-%dT%H%M')}.json"
     if out.exists():
         print(f"{out.name} already exists. Not downloading again (delete it yourself if you really want a fresh copy).")
         return 1

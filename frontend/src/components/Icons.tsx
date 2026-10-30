@@ -24,9 +24,9 @@ function Icon({ size = 20, children, ...rest }: IconProps & { children: React.Re
 
 export const LogoMark = ({ size = 28 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-    <rect width="32" height="32" rx="8" fill="#142034" />
-    <path d="M16 5c-4.4 0-8 3.5-8 7.9C8 18.8 16 27 16 27s8-8.2 8-14.1C24 8.5 20.4 5 16 5z" fill="#f5b83d" />
-    <circle cx="16" cy="13" r="3.2" fill="#142034" />
+    <rect width="32" height="32" rx="9" fill="#6a6fd2" />
+    <path d="M16 5c-4.4 0-8 3.5-8 7.9C8 18.8 16 27 16 27s8-8.2 8-14.1C24 8.5 20.4 5 16 5z" fill="#ffffff" />
+    <circle cx="16" cy="13" r="3.2" fill="#6a6fd2" />
   </svg>
 )
 
@@ -109,5 +109,73 @@ export const InfoIcon = (p: IconProps) => (
   <Icon {...p}>
     <circle cx="12" cy="12" r="9" />
     <path d="M12 11v5M12 8h.01" />
+  </Icon>
+)
+
+export const SearchIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="M20 20l-4.2-4.2" />
+  </Icon>
+)
+
+export const BellIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16z" />
+    <path d="M10 20.5a2 2 0 0 0 4 0" />
+  </Icon>
+)
+
+export const MenuIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </Icon>
+)
+
+export const UserIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 20a7 7 0 0 1 14 0" />
+  </Icon>
+)
+
+export const ShareIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="18" cy="5.5" r="2.5" />
+    <circle cx="6" cy="12" r="2.5" />
+    <circle cx="18" cy="18.5" r="2.5" />
+    <path d="M8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1" />
+  </Icon>
+)
+
+export const ClockIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5V12l3 2" />
+  </Icon>
+)
+
+export const ChevronDownIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 9l6 6 6-6" />
+  </Icon>
+)
+
+export const ChevronRightIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 6l6 6-6 6" />
+  </Icon>
+)
+
+export const FlagIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
+  </Icon>
+)
+
+export const CrosshairIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="7" />
+    <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
   </Icon>
 )

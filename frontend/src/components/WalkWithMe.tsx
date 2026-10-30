@@ -10,6 +10,7 @@ const TRIGGER_TEXT: Record<string, string> = {
   stopped: 'You have stopped for a while.',
   off_route: 'You are off your planned route.',
   late: 'You are later than expected.',
+  sos: 'SOS sent: your contacts and the (simulated) police dashboard were alerted. Enter your PIN only if you are safe.',
 }
 
 // ---------------- setup ----------------
@@ -152,9 +153,9 @@ function PinPad({ title, sub, onSubmit, error, busy, children }: {
       {children}
       <input autoFocus type="password" inputMode="numeric" maxLength={4} value={pin} aria-label="PIN"
         onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-        className="min-h-14 w-full rounded-xl border border-ink-500 bg-ink-950 text-center text-2xl tracking-[0.6em]" />
+        className="min-h-14 w-full rounded-xl border border-ink-500 bg-ink-950 text-center text-2xl tracking-[0.6em] text-ink-100" />
       {error && <p className="text-sm font-semibold text-white" role="alert">{error}</p>}
-      <button disabled={pin.length !== 4 || busy} className="min-h-14 w-full rounded-xl bg-white text-lg font-bold text-ink-950 disabled:opacity-50">
+      <button disabled={pin.length !== 4 || busy} className="min-h-14 w-full rounded-xl bg-white text-lg font-bold text-danger disabled:opacity-50">
         {busy ? 'Checking…' : "I'm safe"}
       </button>
     </form>
@@ -185,9 +186,13 @@ export function WalkActive({
   const [sosHolding, setSosHolding] = useState(false)
   const [sosSent, setSosSent] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [revoke, setRevoke] = useState(false)
+  const [, setClock] = useState(0) // re-render every few seconds so "last sent N s ago" stays current
   const sosTimer = useRef<number | null>(null)
   const simM = useRef(0)
   const pos = useRef<LatLon | null>(null)
+  const accuracy = useRef<number | undefined>(undefined)
+  const resend = useRef<() => void>(() => {})
   const battery = useRef<number | undefined>(undefined)
   const link = `${window.location.origin}${session.contact_path}`
 
@@ -213,6 +218,30 @@ export function WalkActive({
     return () => clearInterval(id)
   }, [refresh])
 
+  // Keep the screen awake during the walk where the browser allows it (Wake Lock: Android Chrome, recent Safari).
+  // Browsers may still pause a page in the background: this is not guaranteed background tracking.
+  useEffect(() => {
+    const nav = navigator as unknown as { wakeLock?: { request: (t: string) => Promise<{ release: () => Promise<void> }> } }
+    let lock: { release: () => Promise<void> } | null = null
+    const get = () => nav.wakeLock?.request('screen').then((l) => (lock = l)).catch(() => {})
+    get()
+    // When the page comes back (screen on, tab visible) or the network returns: send at once and refresh.
+    const back = () => {
+      if (document.visibilityState === 'visible') get()
+      resend.current()
+      refresh()
+    }
+    document.addEventListener('visibilitychange', back)
+    window.addEventListener('online', back)
+    const tick = setInterval(() => setClock((c) => c + 1), 5000)
+    return () => {
+      document.removeEventListener('visibilitychange', back)
+      window.removeEventListener('online', back)
+      clearInterval(tick)
+      lock?.release().catch(() => {})
+    }
+  }, [refresh])
+
   // battery level, where the browser offers it (Android Chrome); contacts are told below 10 %
   useEffect(() => {
     const nav = navigator as unknown as { getBattery?: () => Promise<{ level: number }> }
@@ -221,16 +250,19 @@ export function WalkActive({
 
   // positions: simulated along the route (demo) or from the phone's GPS
   useEffect(() => {
-    if (!state || ['arrived', 'ended'].includes(state.status)) return
+    if (!state || ['arrived', 'ended', 'expired'].includes(state.status)) return // sharing stops at the end
     const send = (p: LatLon) => {
       pos.current = p
       onPosition(p)
-      api.walkPosition(session.walk_id, session.token, { ...p, battery_pct: battery.current }).then(setState).catch(() => {})
+      api.walkPosition(session.walk_id, session.token, { ...p, battery_pct: battery.current, accuracy_m: accuracy.current })
+        .then(setState).catch(() => {})
     }
+    resend.current = () => pos.current && send(pos.current)
     if (session.simulated) {
       const id = setInterval(() => {
         if (!paused) simM.current += SIM_SPEED_MS * 3
         const [lat, lon] = pointAlong(state.route, simM.current)
+        accuracy.current = 5
         send({ lat: offRoute ? lat + 0.0008 : lat, lon })
       }, 3000)
       return () => clearInterval(id)
@@ -241,7 +273,10 @@ export function WalkActive({
     }
     let latest: LatLon | null = null
     const watch = navigator.geolocation.watchPosition(
-      (p) => (latest = { lat: p.coords.latitude, lon: p.coords.longitude }),
+      (p) => {
+        latest = { lat: p.coords.latitude, lon: p.coords.longitude }
+        accuracy.current = Math.round(p.coords.accuracy)
+      },
       (err) => setError(err.code === err.PERMISSION_DENIED ? 'Location permission was refused: your contacts cannot see where you are.' : 'Your position is not available right now.'),
       { enableHighAccuracy: true, maximumAge: 3000 },
     )
@@ -280,7 +315,7 @@ export function WalkActive({
     setPinBusy(true)
     setPinError(null)
     try {
-      await api.walkEnd(session.walk_id, session.token, pin)
+      await api.walkEnd(session.walk_id, session.token, pin, revoke)
       walkSession.set(null)
       onFinished()
     } catch (e) {
@@ -323,7 +358,8 @@ export function WalkActive({
 
   if (!state) return <p className="text-sm text-ink-400">{error ?? 'Starting your walk…'}</p>
 
-  const done = state.status === 'arrived' || state.status === 'ended'
+  const done = state.status === 'arrived' || state.status === 'ended' || state.status === 'expired'
+  const sentAgo = state.last_position_utc ? Math.max(0, Math.round((Date.now() - new Date(state.last_position_utc).getTime()) / 1000)) : null
   const eta = state.expected_arrival_utc ? new Date(state.expected_arrival_utc).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '—'
   const asked = state.check_started_utc ? Math.floor((Date.now() - new Date(state.check_started_utc).getTime()) / 1000) : 0
   const left = Math.max(0, state.timers.ask_s - asked)
@@ -343,7 +379,12 @@ export function WalkActive({
       {ending && !state.asking && (
         <div className="fixed inset-0 z-[2400] flex items-center justify-center bg-ink-950/95 p-6">
           <div className="w-full max-w-sm">
-            <PinPad title="End walk" sub="Enter your PIN to stop sharing your location." error={pinError} busy={pinBusy} onSubmit={end} />
+            <PinPad title="End walk & stop sharing" sub="Enter your PIN. Your location stops being shared at once." error={pinError} busy={pinBusy} onSubmit={end}>
+              <label className="flex items-start gap-2 text-sm text-ink-200">
+                <input type="checkbox" checked={revoke} onChange={(e) => setRevoke(e.target.checked)} className="mt-1" />
+                Also switch the trip link off now (contacts will not even see that you ended the walk).
+              </label>
+            </PinPad>
             <button onClick={() => setEnding(false)} className="mt-3 w-full text-sm text-ink-300 underline">Keep walking</button>
           </div>
         </div>
@@ -352,8 +393,15 @@ export function WalkActive({
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-beacon-400">Walk With Me</p>
         <h2 className="mt-0.5 text-lg font-semibold">
-          {state.status === 'arrived' ? 'You have arrived' : state.status === 'ended' ? 'Walk ended' : `Walking · arriving about ${eta}`}
+          {state.status === 'arrived' ? 'You have arrived' : state.status === 'ended' ? 'Walk ended' : state.status === 'expired' ? 'Walk closed automatically' : `Walking · arriving about ${eta}`}
         </h2>
+        <p className={`mt-1 text-sm ${state.sharing ? (sentAgo != null && sentAgo > 20 ? 'text-caution-ink' : 'text-safe-ink') : 'text-ink-400'}`} role="status">
+          {state.sharing
+            ? sentAgo != null && sentAgo > 20
+              ? `Location sharing ON, but nothing sent for ${sentAgo} s — check your connection and location permission.`
+              : `Location sharing ON · last sent ${sentAgo ?? '—'} s ago${state.last_accuracy_m != null ? ` (± ${Math.round(state.last_accuracy_m)} m)` : ''}`
+            : 'Location sharing OFF'}
+        </p>
         {session.simulated && <p className="text-xs text-beacon-300">Demo: positions are simulated along the route.</p>}
       </div>
 
@@ -391,7 +439,7 @@ export function WalkActive({
               className={`min-h-14 rounded-xl text-base font-bold ${sosHolding ? 'bg-white text-danger' : 'bg-danger text-white'}`}>
               {sosSent ? 'SOS sent' : sosHolding ? 'Keep holding…' : 'SOS (hold 2 s)'}
             </button>
-            <button onClick={() => { setPinError(null); setEnding(true) }} className="min-h-14 rounded-xl border border-ink-600 text-sm font-semibold">End walk</button>
+            <button onClick={() => { setPinError(null); setEnding(true) }} className="min-h-14 rounded-xl border border-ink-600 text-sm font-semibold">End walk & stop sharing</button>
           </div>
 
           {session.simulated && (

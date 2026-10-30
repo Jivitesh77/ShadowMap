@@ -7,3 +7,5 @@ python-dotenv==1.2.4
 pytest==9.2.0
 httpx==0.28.1
 python-multipart==0.0.32  # file uploads (videos, Sentinel photos)
+opencv-python-headless==4.14.0.94  # face/plate redaction (4.x: OpenCV 5 removed the Haar detectors)
+numpy==2.5.4

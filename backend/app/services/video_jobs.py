@@ -21,8 +21,10 @@ from app.services.video import VideoError, extract_frame, frame_times, probe
 log = logging.getLogger("shadowmap.video")
 
 
-def street_edges(db) -> list[StreetEdge]:
-    return [StreetEdge(s.id, s.start_node, s.end_node, s.length_m, s.geometry) for s in db.scalars(select(models.Street)).all()]
+def street_edges(db, city: str | None = None) -> list[StreetEdge]:
+    from app.services.cities import default_city
+    q = select(models.Street).where(models.Street.city == (city or default_city()))
+    return [StreetEdge(s.id, s.start_node, s.end_node, s.length_m, s.geometry) for s in db.scalars(q).all()]
 
 
 def frame_path(job_id: int, index: int) -> Path:
@@ -32,8 +34,9 @@ def frame_path(job_id: int, index: int) -> Path:
 def _clear_job_output(db, job: models.VideoJob) -> None:
     """Remove observations and frame files of this job (an interrupted or failed run), including half-written frames."""
     for o in db.scalars(select(models.Observation).where(models.Observation.video_job_id == job.id)).all():
-        if o.photo_path:
-            Path(o.photo_path).unlink(missing_ok=True)
+        for p in (o.photo_path, o.redacted_path):
+            if p:
+                Path(p).unlink(missing_ok=True)
         db.delete(o)
     for f in config.PHOTO_DIR.glob(f"video{job.id}_f*.jpg"):
         f.unlink(missing_ok=True)
@@ -86,7 +89,7 @@ def process_job(job_id: int) -> None:
 
             job.stage = "placing route"
             db.commit()
-            route = trace(street_edges(db), [tuple(p) for p in job.route_waypoints])
+            route = trace(street_edges(db, job.city), [tuple(p) for p in job.route_waypoints])
             job.route_geometry, job.route_length_m = route.geometry, round(route.length_m, 1)
 
             times = frame_times(info["duration_s"], job.frame_interval_s, start, end)

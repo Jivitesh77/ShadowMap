@@ -13,6 +13,9 @@ from sqlalchemy.orm import Session
 
 from app import config, models
 from app.db import get_db, utcnow
+from app.routers.photos import is_public
+from app.services import cities
+from app.services.walks import WalkConflict, save
 
 router = APIRouter(prefix="/api")
 IST = timedelta(hours=5, minutes=30)
@@ -70,10 +73,13 @@ def police_alert_out(a: models.Alert, walk: models.Walk, db: Session) -> dict:
 
 
 @router.get("/police/alerts", dependencies=POLICE)
-def police_alerts(scope: str = Query("active", pattern="^(active|history)$"), db: Session = Depends(get_db)):
-    q = select(models.Alert).where(models.Alert.level == "police").order_by(models.Alert.created_at.desc())
+def police_alerts(scope: str = Query("active", pattern="^(active|history)$"), city: str | None = Query(None),
+                  db: Session = Depends(get_db)):
+    city = cities.resolve(city)  # each city's control room sees only walks planned in that city
+    q = (select(models.Alert).join(models.Walk, models.Walk.id == models.Alert.walk_id)
+         .where(models.Alert.level == "police", models.Walk.city == city).order_by(models.Alert.created_at.desc()))
     q = q.where(models.Alert.status != "resolved") if scope == "active" else q.limit(100)
-    return {"simulated": True, "alerts": [police_alert_out(a, db.get(models.Walk, a.walk_id), db) for a in db.scalars(q).all()]}
+    return {"simulated": True, "city": city, "alerts": [police_alert_out(a, db.get(models.Walk, a.walk_id), db) for a in db.scalars(q).all()]}
 
 
 class StatusIn(BaseModel):
@@ -84,32 +90,42 @@ ORDER = ["new", "acknowledged", "unit_sent", "resolved"]
 
 
 @router.post("/police/alerts/{alert_id}/status", dependencies=POLICE)
-def police_set_status(alert_id: int, req: StatusIn, db: Session = Depends(get_db)):
+def police_set_status(alert_id: int, req: StatusIn, city: str | None = Query(None), db: Session = Depends(get_db)):
+    city = cities.resolve(city)
     a = db.get(models.Alert, alert_id)
-    if not a or a.level != "police":
-        raise _err(404, "not_found", "No such police alert.")
-    if ORDER.index(req.status) <= ORDER.index(a.status):
-        raise _err(409, "backwards", f"The alert is already '{a.status}'.")
+    walk = db.get(models.Walk, a.walk_id) if a else None
+    if not a or a.level != "police" or walk is None or walk.city != city:  # another city's alert is "not found" here
+        raise _err(404, "not_found", "No such police alert in this city.")
     now = utcnow()
-    a.status, a.updated_at = req.status, now
-    a.history = [*(a.history or []), {"at": _iso(now), "status": req.status, "by": "control room (simulated)"}]
-    walk = db.get(models.Walk, a.walk_id)
     label = {"acknowledged": "acknowledged the alert", "unit_sent": "sent a unit", "resolved": "marked the alert resolved"}[req.status]
-    walk.events = [*(walk.events or []), {"at": _iso(now), "kind": f"police_{req.status}", "text": f"Control room {label} (simulated)."}]
-    if req.status == "resolved":
-        a.resolved_reason = "resolved by control room"
-    db.commit()
+
+    def change():  # re-run on the newest state if the walk changed meanwhile (walks.save)
+        if ORDER.index(req.status) <= ORDER.index(a.status):
+            raise _err(409, "backwards", f"The alert is already '{a.status}'.")
+        a.status, a.updated_at = req.status, now
+        a.history = [*(a.history or []), {"at": _iso(now), "status": req.status, "by": "control room (simulated)"}]
+        walk.events = [*(walk.events or []), {"at": _iso(now), "kind": f"police_{req.status}", "text": f"Control room {label} (simulated)."}]
+        if req.status == "resolved":
+            a.resolved_reason = "resolved by control room"
+
+    try:
+        save(db, walk, change)
+    except WalkConflict:
+        raise _err(503, "busy", "The walk was being updated at the same moment. Please try again.")
     return police_alert_out(a, walk, db)
 
 
 @router.get("/police/coverage", dependencies=POLICE)
-def sentinel_coverage(db: Session = Depends(get_db)):
-    """Streets seen by a Sentinel in the last hour, so gaps are visible (blueprint §11)."""
+def sentinel_coverage(city: str | None = Query(None), db: Session = Depends(get_db)):
+    """Streets of one city seen by a Sentinel in the last hour, so gaps are visible (blueprint §11)."""
+    city = cities.resolve(city)
     since = utcnow() - timedelta(hours=1)
+    street_ids = select(models.Street.id).where(models.Street.city == city)
     rows = db.execute(select(models.Observation.street_id, func.count(), func.max(models.Observation.captured_at))
-                      .where(models.Observation.captured_at >= since, models.Observation.street_id.is_not(None))
+                      .where(models.Observation.captured_at >= since, models.Observation.street_id.in_(street_ids))
                       .group_by(models.Observation.street_id)).all()
-    total = db.scalar(select(func.count()).select_from(models.Street).where(models.Street.in_demo_area.is_(True)))
+    total = db.scalar(select(func.count()).select_from(models.Street)
+                      .where(models.Street.in_demo_area.is_(True), models.Street.city == city))
     return {"streets_seen_last_hour": len(rows), "streets_in_area": total,
             "streets": [{"street_id": sid, "photos": n, "latest_utc": _iso(t)} for sid, n, t in rows]}
 
@@ -121,10 +137,10 @@ def _night(t) -> str:
     return (t + IST - timedelta(hours=6)).date().isoformat()
 
 
-def repair_list(db: Session) -> list[dict]:
+def repair_list(db: Session, city: str) -> list[dict]:
     now = utcnow()
     week = now - timedelta(days=7)
-    streets = {s.id: s for s in db.scalars(select(models.Street)).all()}
+    streets = {s.id: s for s in db.scalars(select(models.Street).where(models.Street.city == city)).all()}
     entries: dict[int, dict] = {}
 
     def entry(sid):
@@ -139,6 +155,8 @@ def repair_list(db: Session) -> list[dict]:
 
     for r in db.scalars(select(models.Report).where(models.Report.street_id.is_not(None), models.Report.created_at >= week,
                                                     models.Report.kind.in_(["broken_light", "dark"]))).all():
+        if r.street_id not in streets:
+            continue  # another city's street
         e = entry(r.street_id)
         if r.kind == "broken_light":
             e["broken_light_reports"] += 1
@@ -150,6 +168,8 @@ def repair_list(db: Session) -> list[dict]:
 
     for o in db.scalars(select(models.Observation).where(models.Observation.street_id.is_not(None), models.Observation.captured_at >= week,
                                                          models.Observation.analysis_status == "done")).all():
+        if o.street_id not in streets:
+            continue
         broken = (o.streetlights_visible or 0) > (o.streetlights_working or 0)
         if o.lighting == "dark" or broken:
             e = entry(o.street_id)
@@ -158,7 +178,7 @@ def repair_list(db: Session) -> list[dict]:
             e["evidence"].append({"observation_id": o.id, "captured_utc": _iso(o.captured_at), "sentinel": o.sentinel_label,
                                   "lighting": o.lighting, "streetlights_visible": o.streetlights_visible,
                                   "streetlights_working": o.streetlights_working, "description": o.description,
-                                  "photo_available": False})
+                                  "photo_available": is_public(o), "photo_url": f"/api/photos/{o.id}" if is_public(o) else None})
         elif o.lighting in ("bright", "dim") and o.street_id in entries:
             e = entries[o.street_id]
             e["latest_lit_utc"] = max(filter(None, [e["latest_lit_utc"], o.captured_at]))
@@ -187,25 +207,27 @@ def repair_list(db: Session) -> list[dict]:
 
 
 @router.get("/city/repairs")
-def city_repairs(db: Session = Depends(get_db)):
-    items = repair_list(db)
-    return {"generated_utc": _iso(utcnow()), "items": items,
+def city_repairs(city: str | None = Query(None), db: Session = Depends(get_db)):
+    city = cities.resolve(city)
+    items = repair_list(db, city)
+    return {"city": city, "generated_utc": _iso(utcnow()), "items": items,
             "hotspots": sorted([i for i in items if i["nights_dark_last_7"] >= 1], key=lambda x: -x["nights_dark_last_7"])[:10],
             "note": "Built from community reports (last 7 days) and analysed Sentinel photos. Photos appear after face/plate blurring."}
 
 
 @router.get("/city/repairs.csv")
-def city_repairs_csv(db: Session = Depends(get_db)):
+def city_repairs_csv(city: str | None = Query(None), db: Session = Depends(get_db)):
+    city = cities.resolve(city)
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["rank", "street", "road_class", "length_m", "lat", "lon", "openstreetmap_way", "broken_light_reports",
                 "independent_reporters", "dark_reports", "nights_dark_last_7", "walks_through", "routes_planned_through",
                 "status", "latest_evidence_utc", "latest_photo_note"])
-    for x in repair_list(db):
+    for x in repair_list(db, city):
         ev = x["evidence"][-1] if x["evidence"] else None
         w.writerow([x["rank"], x["name"], x["road_class"], x["length_m"], f"{x['lat']:.6f}", f"{x['lon']:.6f}",
                     f"https://www.openstreetmap.org/way/{x['osm_way_id']}", x["broken_light_reports"], x["independent_reporters"],
                     x["dark_reports"], x["nights_dark_last_7"], x["walks_through"], x["routes_planned_through"], x["status"],
                     x["latest_dark_utc"], ev["description"] if ev else ""])
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
-                             headers={"Content-Disposition": 'attachment; filename="shadowmap_repair_list.csv"'})
+                             headers={"Content-Disposition": f'attachment; filename="shadowmap_repair_list_{city}.csv"'})

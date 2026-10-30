@@ -24,3 +24,4 @@ frontend/dist/
 # Night-ride footage shows real faces and number plates: never pushed to GitHub (also often >100 MB).
 assets/videos/*
 !assets/videos/.gitkeep
+*.tsbuildinfo

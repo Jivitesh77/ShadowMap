@@ -4,7 +4,7 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-30 — Walker app complete (M8 briefing, M9 reports + help point) and verified; AI paths tested with simulated Gemini only (no key). Next: M6 (Gemini photo analysis, blur, deletion).
+Last updated: 2026-10-30 — M0–M11 built; M6, Walk With Me completion and the second demo city (Delhi) are uncommitted, 196 tests pass. Needs: Gemini key, real night photos, real Android/iPhone tests, deployment. Not production-ready. Earlier log entries that call M6 "not built" describe the state at that time.
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
@@ -14,7 +14,7 @@ Last updated: 2026-10-30 — Walker app complete (M8 briefing, M9 reports + help
 | M3 | Safety score + street colours | P1 | 1.5 h | Done (verified) | Full §7 formula incl. photo score, freshness, reports, clamp; 11 scoring tests |
 | M4 | Route finder (shortest vs safest) | P1 | 3 h | Done (verified) | Dijkstra both costs, 50% limit, comparison card; 10 routing + 1 API test; real routes on campus |
 | M5 | Sentinel capture page (live) | P1 | 3 h | Done (verified) | Camera/GPS/rules/resize/upload/duplicates/status; tested with fake camera + simulated GPS and in pytest. Real phone over https: M12 |
-| M6 | AI analysis, live colours, blur, deletion | P1 | 4 h | Partly: deletion done | Gemini photo analysis and blurring **not built** (no key); automatic deletion built and tested |
+| M6 | AI analysis, live colours, blur, deletion | P1 | 4 h | Built — real-data check pending | Redaction (YuNet + Haar), Gemini analysis + privacy check, photo endpoint, deletion, score integration; tested with synthetic images and simulated Gemini only |
 | M7 | Video mode | P1 | 2.5 h | Built — real-data check pending | Full pipeline verified on a generated 120 s test clip; assets/videos was empty, so the owner's footage is untested |
 | M8 | AI route briefing + voice | P1 | 2 h | Built — real-AI check pending | Data summary EN/HI verified live; AI path + fact check verified with simulated Gemini; read-aloud runs (EN/HI voices found) |
 | M9 | Community reports + nearest help point | P1 | 2 h | Done (verified) | Reports change scores and routes; agreement, fading, limits; help point honest when nothing is known open |
@@ -181,3 +181,110 @@ Prepared (not deployed): `backend/Dockerfile` (Python 3.14 + FFmpeg; not test-bu
 Docs: README rewritten (setup, settings, demo script, limitations), `docs/TESTING_CHECKLIST.md` (laptop, Android Chrome, iPhone Safari, police, failure drills, showcase morning).
 Checks: `pytest` 80 passed; `npm run build` passes; production build served cross-origin against an isolated backend copy — every page loads at phone and laptop size, no JS errors, no failed requests, CORS refuses other sites, trip page shows live dot + ALERT banner. Owner's database untouched.
 **Not production-ready.** Open: M6 (Gemini photo analysis + blurring), real videos, real Gemini, real phones, Docker build, actual deployment.
+
+### 2026-10-30 — M6 Gemini photo analysis and image privacy (built; NOT committed per owner)
+Pipeline (`services/photo_worker.py`): original (restricted, never served) → **blur faces + plates locally** (`services/redaction.py`: YuNet face model, SHA-256-checked, on photo + brightened copy; Haar face backup; Haar plate cascades) → **Gemini analyses only the blurred copy** (`services/photo_analysis.py`: strict JSON schema, people only counted, description rejected if it describes people) and double-checks for faces/plates still visible → photo **public only if redaction succeeded and the AI saw nothing identifying** → original deleted after analysis. Any failure → kept private, never sent to the AI, never scored (fail closed). Rate limits: max GEMINI_MAX_PER_MINUTE calls, backoff 1→15 min on 429/timeout, 5 attempts then "failed".
+Public photos only via `GET /api/photos/{id}` (approved + redacted + unexpired; otherwise the same 404; no-store). Street panel and city evidence show approved photos.
+Reused: `retention.py` (now deletes original + blurred copy at 6 h, marks unanalysed photos "expired"), video-job deletion (removes both files), scoring formula (only `done` counts; low-confidence analyses may only lower a score).
+Environment: OpenCV 5.0 was first installed but has no Haar detectors → replaced by opencv-python-headless 4.14.0.94 (verified wheel, offline install); YuNet model downloaded to a temporary folder, verified against the official checksum, copied to `backend/models/` (folder was new; nothing overwritten). Bug fixed: an unexpected detector error escaped the fail-closed path (photo stayed private but was retried forever) — every error now ends as "failed, private".
+Checks: `pytest` **115 passed** (35 in test_photos.py: schema validation incl. personal-description rejection, Gemini success/no key/429/500/timeout/invalid JSON, blurring only detected regions, EXIF/GPS removed, ≤640 px, real detectors load and run, fail-closed on unreadable image/detector crash/OpenCV missing/YuNet missing or altered, approval rules, original never served, retries/give-up, no-key waiting, unclear not scored, 6-hour deletion of both files, uncertain evidence never raises a score, only `done` observations change scores). Frontend build passes.
+Not verified: real Gemini (no key), detection accuracy on real night photos (synthetic images only).
+
+### 2026-10-30 — M6 post-implementation security review (no code changed)
+Confirmed: originals are never served (one image route; approval + redaction + expiry + folder checks); every redaction, Gemini, no-key, timeout and malformed-JSON path leaves photos private and unscored; only the blurred copy goes to Gemini; EXIF/GPS dropped; low-confidence evidence cannot raise a score; YuNet checksum verified; multiple faces/plates blurred.
+Gaps found (to fix before real-photo validation): (1) some malformed Gemini answers (nested lists) and a vanished blurred file raise errors the worker does not count → retried forever every 3 s and, because one try block wraps the whole round, they block all other photos; (2) plate privacy relies on Gemini's check when the Russian-trained cascades find no plate — Indian plates are not covered; recommended: keep a photo private whenever vehicles are reported and no plate was blurred (and whenever people are reported and no face was blurred). Files: `app/services/photo_worker.py`, `app/services/photo_analysis.py`. Tests 115 passed; build passes.
+
+### 2026-10-30 — M6 review fixes (uncommitted per owner)
+1. Worker robustness: defensive Gemini validation (nested lists, non-text items, odd structures → controlled "invalid"); every error counts as an attempt (max 5 → failed, private, original deleted, never picked again); each photo in its own error handler (`process_safely`), so a bad photo cannot block others; missing blurred copy → failed/expired. Existing rate limit and backoff unchanged.
+2. Conservative approval: public only if blurring done, analysis clear with medium/high confidence, Gemini sees no face/plate, vehicles ⇒ ≥1 plate blurred, people ⇒ ≥1 face blurred. Scoring and the briefing now use only analysed AND approved observations. Not reliable Indian plate detection (documented).
+3. Retention removes abandoned `.tmp` files (>10 min) in the blurred-photo folder only.
+Tests: **131 passed** (51 in test_photos.py, 16 new regression tests); frontend build passes. Files: `services/photo_analysis.py`, `services/photo_worker.py`, `services/street_state.py`, `routers/walker.py` (briefing filter), `services/retention.py`, `tests/test_photos.py`, docs.
+
+### 2026-10-30 — Walk With Me completion (uncommitted per owner)
+Already worked (verified, kept): explicit start, PIN/duress PIN (hashed), walker token (hashed), escalation stop/off-route/late → ask → contacts → police (simulated) with status flow, SOS, battery notice, arrival, background clock, 24 h deletion, police access code.
+Fixed: public trip link returned the walker's phone number (removed; no phones/contacts in link view); after the end the link still showed route/timeline (now final status only, expires after 1 h) and could not be revoked (End now offers "switch the link off now" → 410 at once); repeated SOS created duplicate police alerts; GPS accuracy ignored (poor fixes no longer move the stop/off-route/arrival clocks; movement must exceed the fix uncertainty); unlimited PIN guessing (3 wrong → 30 s lock-out, contacts told); walks nobody ended shared forever (closed after 12 h, then deleted after 24 h); positions after the end were still accepted for display (now refused); briefing fact check let distances unlock invented minutes (M8 bug found by the suite).
+Frontend: "Location sharing ON · last sent N s ago (± m)" status with stale warning, "End walk & stop sharing" with revoke option, SOS wording, Wake Lock (where supported), resend on reconnect/visibility, accuracy sent; contact page without phone/call button, "closed automatically" state.
+Tests: **148 passed** (16 new in `tests/test_walks_privacy.py`: random links, no phone numbers, two simultaneous trips and cross-access, end/revoke/expiry, positions refused after end, inaccurate GPS, GPS jump, short signal loss, repeated SOS, duress after SOS, PIN lock-out, hashed PINs/tokens, restart, 12 h close + 24 h deletion, no trip data in public endpoints; +1 briefing regression). Frontend build passes. Isolated test database only.
+Requires real devices: GPS permission flows, screen sleep/background, reconnection, battery API, Wake Lock (docs/TESTING_CHECKLIST.md). Requires deployment: https for real GPS on phones.
+
+### 2026-10-30 — Second demo city: Aastha Kunj, Delhi (uncommitted, awaiting review)
+Status: **Built and verified with real OSM data. No Sentinel footage of Delhi yet.**
+- Registry `assets/demo-data/cities.json`; Delhi area `assets/demo-data/delhi/area.json`. The centre is OSM way 479658972; the box is about 4 × 4 km; landmarks were checked via Nominatim.
+- Real OSM download via `scripts.fetch_osm --city delhi`: 6,375 elements, 3,993 road ways.
+- Built with `scripts.build_map --city delhi`: 6,272 street pieces (394 km) and 1,442 places. Guwahati is unchanged (73 streets, 27 places). The database was backed up first, and the build is additive.
+- A `city` column on streets, places and video jobs; existing rows were labelled `guwahati`. Every map, route, briefing, report, help-point, where-am-I, walk, Sentinel trace/job, city-repair and summary endpoint takes `city` (default: guwahati). Unknown city → 404.
+- Performance for Delhi:
+  - street↔place distances are cached per map build;
+  - the help point checks the 10 nearest open + 6 unknown-hours places;
+  - Leaflet draws on a canvas.
+  - Measured: map ~0.5 s (first load ~1.5 s), route ~0.4 s, help point ~1.4 s.
+- Routing: if the nearest path is an isolated piece, the route uses the nearest connected street within 100 m and says so.
+- Frontend: a **Demo area** picker (sidebar and phone top bar) reloads the page for the chosen city; the centre and distance labels are per city.
+- Checks run on an isolated database copy (backend 8001, frontend 5174, then stopped):
+  - 4 Delhi routes OK. Aastha Kunj→Nehru Place metro 960 m; Lotus Temple→Kalkaji Mandir 899 m; ISKCON→East of Kailash 695 m; Aastha Kunj→Kalkaji 2.3 km, where the safest route differs.
+  - The Delhi help point and where-am-I return Delhi places.
+  - A Delhi report left the Guwahati summary, scores and repair list unchanged.
+  - Screenshots of both cities and the Delhi city dashboard look right.
+- Tests: **161 passed** (13 new in `tests/test_cities.py`). The frontend build passes.
+
+### 2026-10-30 — Police dashboard city isolation (uncommitted, awaiting review)
+- Each walk now stores `city` (the city its route was planned in). Older walks are labelled `guwahati`; the owner database had 0 walks and 0 alerts, so nothing changed there.
+- `GET /api/police/alerts` (active and history) and `GET /api/police/coverage` take `city`; the default is guwahati.
+- `POST /api/police/alerts/{id}/status` takes `city` too. An alert of another city answers 404 and is not changed.
+- The police page sends the selected city. The escalation timing and the simulated workflow are unchanged.
+- Tests: **165 passed**. There are 4 new tests in `tests/test_cities.py`:
+  - each city lists only its own alerts (active and history);
+  - a cross-city status update is rejected and leaves the alert unchanged;
+  - the status flow still works within a city;
+  - coverage is per city.
+- The existing escalation and acknowledgement tests still pass. The frontend build passes.
+
+### 2026-10-30 — Backend integration audit (excluding real photo/video validation; uncommitted)
+- All 18 backend modules were inspected against the code. All 36 frontend API paths match the backend routes and methods.
+- Scenarios A–I were run end-to-end on the isolated test database and all pass; they are now permanent tests in `tests/test_integration_scenarios.py`:
+  - A: trip, then arrival, then sharing stops.
+  - B: off-route, then the ask/contacts/police escalation.
+  - C: SOS with no duplicates, then acknowledged / unit sent / resolved.
+  - D: discreet duress.
+  - E: connection loss and reconnect with no duplicate alerts.
+  - F: two cities at once.
+  - G: expiry, then anonymisation.
+  - H: report, then score, repair list and CSV.
+  - I: city switch.
+- Defects found and reported, not fixed:
+  - #87 (High): lost updates between the walk clock and requests.
+  - #85 (Medium): a correct PIN reactivates a finished walk.
+  - #86 (Medium, needs an owner decision): SOS after the end reopens sharing.
+  - Each is reproduced by an `xfail(strict)` test.
+- Lower findings: #88–#92.
+- Tests: **174 passed, 3 xfailed**. The frontend build passes.
+
+### 2026-10-30 — Reliability fixes for audit issues #85–#89 (uncommitted, awaiting review)
+- #85: finished walks stay finished. Every PIN gets 409 `walk_finished`; the duress PIN still alerts police silently.
+- #86 (decision B): SOS or duress PIN after the end raises one police alert (`sos_after_end` / `duress_after_end`), and the walk stays finished.
+- #87: optimistic locking on `walks.version`, with `services/walks.save` retrying on the newest state. The clock, all walker endpoints, police status changes and retention use it.
+- #88: missing indexes are created on start. The owner database was upgraded by the running backend; row counts are unchanged and the integrity check is ok.
+- #89: backup/restore steps in DEPLOYMENT.md. The commands were tested on copies.
+- Neutral wording replaces "her"/"she".
+- Tests: **196 passed, 0 expected failures** (19 new in `tests/test_walk_reliability.py`; the 3 former xfails are now normal tests). The frontend build passes.
+
+### 2026-10-30 — Visual redesign from the owner's reference screenshot (uncommitted, awaiting review)
+- Light theme with a lavender-blue accent, applied to every screen through the colour tokens in `index.css`. Safety colours are unchanged; darker green and amber are used for text.
+- Shell:
+  - an icon-only sidebar that expands over the page on hover or keyboard focus and collapses on mouse leave;
+  - a phone menu drawer that replaces the bottom tabs;
+  - a top bar with search, notifications (real states only) and a profile (the name saved on this device, or "Guest"; there are no accounts).
+- Walker page:
+  - a planning bar (starting point / destination / travel time / Compare routes);
+  - a map card with a legend;
+  - route cards on the right, showing the same real numbers as the former table;
+  - three shortcuts: share journey, report a concern, travel information (real route or area figures).
+  - No placeholder metrics.
+- Checked with headless Chrome on an isolated copy (ports 8001/5174, then stopped):
+  - the sidebar goes 76 → 256 → 76 px, and the map element and its position stay unchanged;
+  - planning a route shows the cards;
+  - search finds real places;
+  - the notifications list contains only real items;
+  - the drawer navigates and closes;
+  - there are no console errors.
+- Screenshots were taken of both cities, the phone layout, Sentinel, the trusted-contact page and the city dashboard. The frontend build passes.

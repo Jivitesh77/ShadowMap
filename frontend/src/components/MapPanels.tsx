@@ -1,6 +1,6 @@
 // Side panel content for the map: area overview, street details, place details.
 import type { ReactNode } from 'react'
-import { api, type MapData, type Place, type StreetObservation } from '../api'
+import { API_BASE, api, type MapData, type Place, type StreetObservation } from '../api'
 import { useApi } from '../hooks/useApi'
 import {
   CATEGORY_ORDER,
@@ -104,7 +104,7 @@ function PlaceReport({ p, onReported }: { p: Place; onReported: () => void }) {
   )
 }
 
-export function PlaceInfo({ p, onClose, onReported }: { p: Place; onClose: () => void; onReported: () => void }) {
+export function PlaceInfo({ p, centreLabel, onClose, onReported }: { p: Place; centreLabel?: string; onClose: () => void; onReported: () => void }) {
   const link = osmUrl(p.osm_id)
   return (
     <div>
@@ -137,7 +137,7 @@ export function PlaceInfo({ p, onClose, onReported }: { p: Place; onClose: () =>
           )}
         </Row>
         <Row label="Phone">{p.phone ?? <span className="text-ink-400">Not listed</span>}</Row>
-        {p.distance_from_center_m != null && <Row label="From IIIT Guwahati">{formatDistance(p.distance_from_center_m)}</Row>}
+        {p.distance_from_center_m != null && <Row label={`From ${(centreLabel ?? 'the area centre').replace(/ \(.*\)$/, '')}`}>{formatDistance(p.distance_from_center_m)}</Row>}
         <Row label="Last verified by team">
           {p.verified_on ? (
             <>
@@ -201,7 +201,12 @@ function StreetEvidence({ id, refreshKey }: { id: number; refreshKey: string }) 
         <ul className="mt-2 space-y-2">
           {obs.data.observations.map((o) => (
             <li key={o.id} className="rounded-lg bg-ink-900/60 p-2.5 text-sm">
+              {o.photo_available && o.photo_url && (
+                <img src={API_BASE + o.photo_url} alt={`Street photo, faces and number plates blurred: ${o.description ?? ''}`}
+                  loading="lazy" className="mb-2 w-full rounded-md" />
+              )}
               <p className="text-ink-100">{describeObservation(o)}</p>
+              {o.confidence === 'low' && <p className="text-xs text-caution-ink">Low confidence: used only if it lowers the score.</p>}
               <p className="mt-0.5 text-xs text-ink-400">
                 {formatAge(o.captured_age_min)} by {o.sentinel_label} · {o.source === 'video' ? 'video frame, position from traced route' : 'live photo, GPS'}
               </p>

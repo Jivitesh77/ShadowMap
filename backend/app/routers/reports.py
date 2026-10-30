@@ -12,6 +12,7 @@ from app.db import get_db, utcnow
 from app.routers.map import parse_at
 from app.services.geo import locate_on_line
 from app.services.scoring import REPORT_EFFECTS
+from app.services import cities
 from app.services.street_state import score_streets
 
 router = APIRouter(prefix="/api/reports")
@@ -32,6 +33,7 @@ class ReportIn(BaseModel):
     lon: float = Field(ge=-180, le=180)
     device_id: str = Field(min_length=4, max_length=64)
     place_id: int | None = None
+    city: str | None = None  # the city shown on the page; reports never attach to another city's streets
     at: str | None = None  # the walk time shown on the page, so the new score matches what the person sees
 
 
@@ -45,14 +47,15 @@ def create_report(req: ReportIn, db: Session = Depends(get_db)):
     if recent >= MAX_PER_DEVICE_PER_HOUR:
         raise _err(429, "too_many", f"You can send {MAX_PER_DEVICE_PER_HOUR} reports per hour. Thank you for helping.")
 
+    city = cities.resolve(req.city)
     street, place = None, None
     if req.kind in PLACE_KINDS:
         place = db.get(models.Place, req.place_id) if req.place_id else None
-        if not place:
+        if not place or place.city != city:
             raise _err(422, "no_place", "Choose the place this report is about.")
     else:
         best = None
-        for s in db.scalars(select(models.Street)).all():
+        for s in db.scalars(select(models.Street).where(models.Street.city == city)).all():
             d, _, _ = locate_on_line(req.lat, req.lon, s.geometry)
             if best is None or d < best[0]:
                 best = (d, s)
@@ -73,9 +76,9 @@ def create_report(req: ReportIn, db: Session = Depends(get_db)):
                       lat=req.lat, lon=req.lon, device_id=req.device_id, created_at=now, fades_at=fades)
     db.add(r)
     db.commit()
-    out = {"report_id": r.id, "kind": r.kind, "fades_at_utc": fades.isoformat() + "Z" if fades else None}
+    out = {"report_id": r.id, "city": city, "kind": r.kind, "fades_at_utc": fades.isoformat() + "Z" if fades else None}
     if street:
-        sc = score_streets(db, parse_at(req.at))[street.id]
+        sc = score_streets(db, parse_at(req.at), city)[street.id]
         out.update({"street_id": street.id, "street_name": street.name or "Unnamed road", "effect_points": REPORT_EFFECTS[req.kind][0],
                     "street_score_now": sc.score, "street_colour_now": sc.colour})
     else:

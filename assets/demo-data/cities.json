@@ -1,0 +1,9 @@
+{
+  "default": "guwahati",
+  "cities": [
+    {"id": "guwahati", "name": "IIIT Guwahati", "data_dir": ".", "centre_label": "IIIT Guwahati (campus centre)",
+     "note": "Original pilot. Files stay in assets/demo-data/ (area.json, osm_*.json, manual_places.json)."},
+    {"id": "delhi", "name": "Aastha Kunj, Delhi", "data_dir": "delhi", "centre_label": "Aastha Kunj Park (area centre)",
+     "note": "Second demo city around Aastha Kunj Park, Kalkaji / East of Kailash, South Delhi."}
+  ]
+}

@@ -61,8 +61,8 @@ export function Stat({
 
 export function Badge({ tone, children }: { tone: 'ok' | 'warn' | 'bad' | 'neutral' | 'beacon'; children: ReactNode }) {
   const tones = {
-    ok: 'bg-safe/15 text-safe ring-safe/30',
-    warn: 'bg-caution/15 text-caution ring-caution/30',
+    ok: 'bg-safe/15 text-safe-ink ring-safe/30',
+    warn: 'bg-caution/15 text-caution-ink ring-caution/30',
     bad: 'bg-danger/15 text-danger ring-danger/30',
     neutral: 'bg-ink-700 text-ink-300 ring-ink-600',
     beacon: 'bg-beacon-400/15 text-beacon-300 ring-beacon-400/30',

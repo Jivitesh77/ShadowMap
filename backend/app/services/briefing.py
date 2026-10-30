@@ -141,15 +141,26 @@ Rules (all mandatory):
 Answer as JSON: {"sentences": [{"text": "...", "fact_ids": ["W", "S1", "P2"]}]}. Every sentence cites at least one fact id."""
 
 
-def _numbers_in(obj) -> set[str]:
-    found = set()
-    for n in re.findall(r"\d+(?:\.\d+)?", json.dumps(obj, ensure_ascii=False)):
-        found.add(n)
-        try:
-            v = float(n)
-            found.update({str(round(v)), f"{v / 1000:.1f}", f"{v / 60:.0f}", str(int(v // 60)), str(int(v % 60))})
-        except ValueError:
-            pass
+def _numbers_in(obj, key: str = "") -> set[str]:
+    """Numbers the AI may use. Each number allows only the variants that fit its kind: metres (keys ending "_m")
+    may be given in km; ages ("age_min") may be split into hours and minutes. Other numbers only as they are.
+    (Earlier every number allowed minute splits, so e.g. 247 m wrongly allowed "7 minutes ago".)"""
+    found: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            found |= _numbers_in(v, k)
+    elif isinstance(obj, list):
+        for v in obj:
+            found |= _numbers_in(v, key)
+    elif isinstance(obj, (int, float)) and not isinstance(obj, bool):
+        v = float(obj)
+        found |= {str(obj), str(round(v))}
+        if key.endswith("_m"):
+            found |= {f"{v / 1000:.1f}", f"{v / 1000:g}"}
+        if key == "age_min":
+            found |= {str(int(v // 60)), str(int(v % 60))}
+    elif isinstance(obj, str):
+        found |= set(re.findall(r"\d+(?:\.\d+)?", obj))  # numbers inside descriptions
     return found
 
 

@@ -50,3 +50,53 @@ If a Google key is configured, the Walker panel can list extra nearby places fro
 3. **Missing roads/footpaths** → optional: a team member adds them to openstreetmap.org (public, free), then re-download with `scripts.fetch_osm`. Must be done **before** night-ride data is collected, because rebuilding the map changes street ids.
 
 Never fill a gap with a guess. Unknown stays labelled unknown.
+
+---
+
+# Second demo city: Aastha Kunj, Delhi (added 2026-10-30)
+
+**Boundary.** Centre: Aastha Kunj Park, OpenStreetMap way 479658972 (28.5547447, 77.2574976), looked up via Nominatim.
+Box: south 28.5367, west 77.2370, north 28.5727, east 77.2780 — about 4 km × 4 km (≈2 km each way from the park).
+Help places (police, hospital, clinic, pharmacy, petrol pump, ATM, transit) are also loaded up to 4 km from the centre.
+Landmarks inside the box (positions from OpenStreetMap/Nominatim, not guessed): Lotus Temple 0.2 km, Sri Sri Radha Parthasarathi Mandir (ISKCON) 0.4 km,
+Kalkaji Mandir 0.6 km, Nehru Place 0.7 km and its metro station 0.8 km, East of Kailash ~0.8 km, Kalkaji ~1.4 km.
+Two wrong Nominatim matches were rejected: "ISKCON Delhi" (returned Dwarka, 23 km away) and "Nehru Place, New Delhi" (returned central Delhi).
+
+**Source and attribution.** OpenStreetMap via the Overpass API, downloaded once on 2026-10-30 (OSM data as of 2026-10-30 11:46 UTC),
+saved as `assets/demo-data/delhi/osm_2026-10-30T1716.json` (6,375 elements, 3,993 road ways). © OpenStreetMap contributors, ODbL.
+No Google data is stored or merged. `assets/demo-data/delhi/manual_places.json` is empty: the team has checked no Delhi place in person.
+
+**Streets.** 6,272 street pieces, 394 km (main 1,347 · residential 2,921 · lanes/footways/paths 1,932 · underpasses 72).
+95.5 % of the length (376 km) forms one connected network. The other 4.5 % are short isolated pieces: park footways, building corridors, private driveways.
+If a tapped point is nearest to such a piece, the route uses the nearest connected street within 100 m and says so in the route notes.
+Only 32 % of the length has a street name, and only 61 pieces carry a `lit` tag, so most lighting is unknown until Sentinel photos exist.
+
+**Places (all "OSM-listed", none team-verified).** 1,442 places: 1,204 inside the box and 238 nearby help places outside it.
+
+| Category | Inside box | Nearby (≤4 km) | With opening hours | Unnamed |
+| --- | --- | --- | --- | --- |
+| Shops & food | 873 | 4 | 64 | 71 |
+| Transit stops | 99 | 20 | 1 | 21 |
+| ATMs | 91 | 68 | 47 | 6 |
+| Hotels | 43 | 0 | 3 | 3 |
+| Hospitals | 26 | 34 | 1 | 3 |
+| Pharmacies | 25 | 26 | 4 | 8 |
+| Clinics | 22 | 37 | 9 | 2 |
+| Petrol pumps | 16 | 33 | 8 | 2 |
+| Police | 9 | 16 | 2 | 8 |
+
+Verification, using the existing ShadowMap fields: every Delhi place has source `osm`.
+- Named entries show "Listed on OpenStreetMap; not checked by the ShadowMap team" (confidence medium).
+- The 124 unnamed entries show confidence low (needs review).
+- Independently verified: 0.
+
+Only 139 places list opening hours, so at night most places show **Hours unknown**. They are never assumed open.
+
+**Scores without photos.** Every Delhi street currently has a map-only baseline score (road type, `lit` tag, nearby places that are not closed).
+At 11:30 pm many footways and lanes are red, because nothing nearby is known to be open. This is the honest result of missing data, not a judgement about Delhi.
+
+**Known gaps.**
+- OSM inside private colonies and parks may be incomplete; gates and their closing times are not mapped.
+- The metro station is mapped, but its entrances and opening times are not used for routing.
+- Shops' hours change often; OSM hours may be out of date.
+- There is no Sentinel footage of Delhi yet.

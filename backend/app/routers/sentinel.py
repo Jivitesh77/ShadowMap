@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app import config, models
 from app.db import get_db, utcnow
 from app.services.geo import haversine_m, locate_on_line
+from app.services import cities
 from app.services.routing import RouteError, trace
 from app.services.video import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, VideoError, probe
 from app.services.video_jobs import street_edges, worker
@@ -196,12 +197,13 @@ def _resolve_ref(ref: str) -> tuple[Path, str, str]:
 
 class TraceRequest(BaseModel):
     waypoints: list[tuple[float, float]] = Field(min_length=2, max_length=60)
+    city: str | None = None
 
 
 @router.post("/trace", dependencies=PROTECTED)
 def preview_trace(req: TraceRequest, db: Session = Depends(get_db)):
     try:
-        r = trace(street_edges(db), req.waypoints)
+        r = trace(street_edges(db, cities.resolve(req.city)), req.waypoints)
     except RouteError as e:
         raise _err(422, e.code, e.message)
     return {"geometry": r.geometry, "length_m": round(r.length_m), "streets": len({s.edge.street_id for s in r.steps})}
@@ -217,6 +219,7 @@ class JobRequest(BaseModel):
     ride_start_s: float | None = Field(None, ge=0)
     ride_end_s: float | None = Field(None, gt=0)
     frame_interval_s: float = Field(5, ge=2, le=30)
+    city: str | None = None
 
 
 @router.post("/videos/jobs", dependencies=PROTECTED)
@@ -242,12 +245,13 @@ def create_job(req: JobRequest, db: Session = Depends(get_db)):
         raise _err(422, "future_time", "The recording time is in the future.")
     if req.ride_end_s is not None and req.ride_start_s is not None and req.ride_end_s <= req.ride_start_s:
         raise _err(422, "bad_range", "The ride must end after it starts.")
+    city = cities.resolve(req.city)
     try:
-        r = trace(street_edges(db), req.waypoints)
+        r = trace(street_edges(db, city), req.waypoints)
     except RouteError as e:
         raise _err(422, e.code, e.message)
 
-    job = models.VideoJob(
+    job = models.VideoJob(city=city,
         original_name=name, source_kind=kind, file_path=str(path), sentinel_label=req.sentinel_label, status="queued",
         stage="waiting in queue", duration_s=info["duration_s"], frame_interval_s=req.frame_interval_s,
         ride_start_s=req.ride_start_s, ride_end_s=req.ride_end_s, recorded_at=recorded, recorded_at_source=recorded_src,
@@ -314,10 +318,13 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 @router.get("/status")
 def sentinel_status(db: Session = Depends(get_db)):
     counts = dict(db.execute(select(models.Observation.analysis_status, func.count()).group_by(models.Observation.analysis_status)).all())
+    redaction = dict(db.execute(select(models.Observation.redaction_status, func.count()).group_by(models.Observation.redaction_status)).all())
     return {
         "observations_by_analysis": counts,
+        "observations_by_redaction": {str(k or "pending"): v for k, v in redaction.items()},
+        "public_photos": db.scalar(select(func.count()).select_from(models.Observation).where(models.Observation.photo_public.is_(True))),
         "ai_configured": bool(config.GEMINI_API_KEY),
-        "ai_note": None if config.GEMINI_API_KEY else "Photos wait in the queue until a Gemini key is set (milestone M6).",
+        "ai_note": None if config.GEMINI_API_KEY else "Photos are blurred but wait for AI analysis until a Gemini key is set.",
     }
 
 
@@ -332,8 +339,9 @@ def delete_job(job_id: int, db: Session = Depends(get_db)):
         raise _err(409, "busy", "This video is still being processed. Wait until it finishes.")
     removed = 0
     for o in db.scalars(select(models.Observation).where(models.Observation.video_job_id == job.id)).all():
-        if o.photo_path:
-            Path(o.photo_path).unlink(missing_ok=True)
+        for p in (o.photo_path, o.redacted_path):  # original and blurred copy
+            if p:
+                Path(p).unlink(missing_ok=True)
         db.delete(o)
         removed += 1
     if job.source_kind == "upload":

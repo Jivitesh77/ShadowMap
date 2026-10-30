@@ -1,9 +1,6 @@
 """Map data for the screens: streets, places and their open/closed/unknown status at a chosen time."""
 
-import json
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -14,28 +11,24 @@ from app.db import get_db
 from app.services.geo import haversine_m, point_to_line_m
 from app.services.places import confidence
 from app.services.scoring import StreetScore
+from app.services import cities
 from app.services.street_state import latest_place_reports, place_status, score_streets
 
 router = APIRouter(prefix="/api")
 
 IST = timezone(timedelta(hours=5, minutes=30))  # India has one time zone and no daylight saving
-DEMO_DATA = Path(__file__).resolve().parents[3] / "assets" / "demo-data"
 
 
-@lru_cache
-def map_source() -> dict:
-    """Area and download details of the saved OpenStreetMap file the map was built from."""
-    files = sorted(DEMO_DATA.glob("osm_*.json"))
-    if not files:
-        return {}
-    meta = json.loads(files[-1].read_text()).get("shadowmap", {})
-    return {
-        "file": files[-1].name,
-        "downloaded_at_utc": meta.get("downloaded_at_utc"),
-        "osm_data_timestamp": meta.get("osm_data_timestamp"),
-        "licence": meta.get("licence"),
-        "area": meta.get("area"),
-    }
+@router.get("/cities")
+def list_cities(db: Session = Depends(get_db)):
+    """Demo cities the user can switch between, with their map centre and bounds."""
+    out = []
+    for c in cities.registry()["cities"]:
+        area = (cities.map_source(c["id"]).get("area") or {})
+        streets = db.scalar(select(func.count()).select_from(models.Street).where(models.Street.city == c["id"]))
+        out.append({"id": c["id"], "name": c["name"], "center": area.get("center"), "bbox": area.get("bbox"),
+                    "has_map_data": bool(streets)})
+    return {"default": cities.default_city(), "cities": out}
 
 
 def parse_at(at: str | None) -> datetime:
@@ -94,13 +87,15 @@ def score_out(sc: StreetScore | None) -> dict:
 
 
 @router.get("/map")
-def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-30T23:30"), db: Session = Depends(get_db)):
+def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-30T23:30"),
+            city: str | None = Query(None, description="demo city id; default: the default city"), db: Session = Depends(get_db)):
     when = parse_at(at)
-    source = map_source()
+    city = cities.resolve(city)
+    source = {**cities.map_source(city), "city": city, "centre_label": cities.centre_label(city)}
     center = (source.get("area") or {}).get("center")
-    streets = db.scalars(select(models.Street)).all()
-    places = db.scalars(select(models.Place)).all()
-    scores = score_streets(db, when)
+    streets = db.scalars(select(models.Street).where(models.Street.city == city)).all()
+    places = db.scalars(select(models.Place).where(models.Place.city == city)).all()
+    scores = score_streets(db, when, city)
     community = latest_place_reports(db)
     return {
         "at": when.isoformat(timespec="minutes"),
@@ -129,10 +124,10 @@ def get_street(street_id: int, at: str | None = None, db: Session = Depends(get_
     if not s:
         raise HTTPException(404, "Street not found.")
     when = parse_at(at)
-    center = (map_source().get("area") or {}).get("center")
+    center = (cities.map_source(s.city).get("area") or {}).get("center")
     nearby = []
     community = latest_place_reports(db)
-    for p in db.scalars(select(models.Place)).all():
+    for p in db.scalars(select(models.Place).where(models.Place.city == s.city)).all():
         d = point_to_line_m(p.lat, p.lon, s.geometry)
         if d <= 200:
             nearby.append({**place_out(p, when, center, community), "distance_m": round(d)})
@@ -147,7 +142,8 @@ def get_street(street_id: int, at: str | None = None, db: Session = Depends(get_
         "lit": s.lit,
         "length_m": s.length_m,
         "osm_way_id": s.osm_way_id,
-        **score_out(score_streets(db, when).get(s.id)),
+        **score_out(score_streets(db, when, s.city).get(s.id)),
+        "city": s.city,
         "observations": observations,
         "reports": reports,
         "nearby_places": nearby,

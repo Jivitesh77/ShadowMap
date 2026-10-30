@@ -1,19 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { api, type HelpPointResult, type LatLon, type RouteResult } from '../api'
 import { useApi } from '../hooks/useApi'
 import { getMyLocation } from '../lib/location'
-import { MapPinIcon } from '../components/Icons'
+import { TopBarSlotContext } from '../components/AppShell'
+import { AlertIcon, ChevronRightIcon, InfoIcon, MapPinIcon, ShareIcon, UsersIcon } from '../components/Icons'
 import { HelpPointPanel } from '../components/HelpPointPanel'
 import { AreaOverview, PlaceInfo, StreetInfo } from '../components/MapPanels'
 import { MapView, type Selection } from '../components/MapView'
+import { PlaceSearch } from '../components/PlaceSearch'
+import { PlanBar, type ChosenPoint } from '../components/PlanBar'
 import { ReportPanel } from '../components/ReportPanel'
 import { RoutePanel, type NamedPoint, type PickTarget } from '../components/RoutePanel'
 import { EmptyState, ErrorState, Skeleton } from '../components/States'
 import { WalkActive, WalkSetup } from '../components/WalkWithMe'
 import { walkSession, type WalkSession } from '../lib/walkSession'
-import { CATEGORY_ORDER, categoryMeta, placeName } from '../lib/mapMeta'
+import { CATEGORY_ORDER, ROUTE_COLOURS, SAFETY_COLOURS, categoryMeta, formatDistance, placeName } from '../lib/mapMeta'
 
-type Tab = 'route' | 'report' | 'help'
+type Tab = 'route' | 'report' | 'help' | 'area'
 
 /** Today's date in India time, as YYYY-MM-DD. */
 function todayIST(): string {
@@ -53,8 +57,13 @@ export default function WalkerPage() {
   }, [])
 
   // Route planning
-  const [start, setStart] = useState<LatLon | null>(null)
-  const [end, setEnd] = useState<LatLon | null>(null)
+  const [startPt, setStartPt] = useState<ChosenPoint | null>(null)
+  const [endPt, setEndPt] = useState<ChosenPoint | null>(null)
+  const start = startPt?.point ?? null
+  const end = endPt?.point ?? null
+  const setStart = (p: LatLon, label = 'Point on the map') => setStartPt({ point: p, label })
+  const setEnd = (p: LatLon, label = 'Point on the map') => setEndPt({ point: p, label })
+  const planRef = useRef<HTMLDivElement>(null)
   const [route, setRoute] = useState<RouteResult | null>(null)
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
@@ -132,8 +141,8 @@ export default function WalkerPage() {
     setLocError(null)
     try {
       const p = await getMyLocation()
-      if (which === 'start') setStart(p)
-      else if (which === 'end') setEnd(p)
+      if (which === 'start') setStart(p, 'My location')
+      else if (which === 'end') setEnd(p, 'My location')
       else setHelpFrom(p)
     } catch (e) {
       setLocError((e as Error).message)
@@ -143,8 +152,8 @@ export default function WalkerPage() {
   }
 
   const clearRoute = () => {
-    setStart(null)
-    setEnd(null)
+    setStartPt(null)
+    setEndPt(null)
     setPicking(null)
     setRoute(null)
     setRouteError(null)
@@ -164,7 +173,7 @@ export default function WalkerPage() {
     if (!data) return []
     const pts: NamedPoint[] = []
     const c = data.source.area?.center
-    if (c) pts.push({ label: 'IIIT Guwahati (campus centre)', point: { lat: c[0], lon: c[1] } })
+    if (c) pts.push({ label: data.source.centre_label ?? 'Area centre', point: { lat: c[0], lon: c[1] } })
     data.places
       .filter((p) => p.in_demo_area && p.name)
       .sort((a, b) => placeName(a).localeCompare(placeName(b)))
@@ -183,6 +192,45 @@ export default function WalkerPage() {
       return n
     })
 
+  const slot = useContext(TopBarSlotContext)
+  const showFound = (r: { kind: 'place' | 'street'; id: number }) => {
+    if (r.kind === 'place') {
+      const cat = data?.places.find((p) => p.id === r.id)?.category
+      if (cat && hidden.has(cat)) toggle(cat) // make sure the marker is visible
+      setOpenOnly(false)
+    }
+    setSelection(r)
+    if (window.innerWidth < 1024) setTimeout(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+  const goTo = (p: { lat: number; lon: number; label: string }) => {
+    setEnd({ lat: p.lat, lon: p.lon }, p.label)
+    setTab('route')
+    setSelection(null)
+    if (!start) setPicking(null)
+  }
+  const compare = () => {
+    setTab('route')
+    setSelection(null)
+    setSetupOpen(false)
+    findRoute()
+    if (window.innerWidth < 1024) setTimeout(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+  const shareJourney = () => {
+    if (route && start && end) {
+      setSelection(null)
+      setSetupOpen(true)
+      if (window.innerWidth < 1024) setTimeout(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    } else {
+      planRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
+  const areaKm = data ? data.streets.reduce((t, x) => t + x.length_m, 0) / 1000 : 0
+  const travelInfo = route
+    ? `Suggested: ${route.safest.duration_min} min · ${formatDistance(route.safest.distance_m)} · ${route.safest.red_m} m on red streets`
+    : data
+      ? `${data.streets.length} street pieces (${areaKm.toFixed(0)} km) · ${data.places.length} places · OSM ${data.source.osm_data_timestamp ? new Date(data.source.osm_data_timestamp).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : 'data'}`
+      : 'Loading map data…'
+
   const pickHint =
     picking === 'start' ? 'Tap the map to set the start (A)'
       : picking === 'end' ? 'Tap the map to set the destination (B)'
@@ -191,87 +239,106 @@ export default function WalkerPage() {
             : null
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-3 sm:space-y-4">
-      <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-beacon-400">Walker</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Plan a safer walk</h1>
-        </div>
-        {/* Time of the walk: open/closed is judged for this time, not for now */}
-        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="Time of walk">
-          <span className="shrink-0 text-xs text-ink-400">Walk time (IST)</span>
-          <button onClick={() => setAt(undefined)}
-            className={`min-h-10 shrink-0 rounded-lg px-3 text-sm font-medium ${!at ? 'bg-beacon-400 text-ink-950' : 'bg-ink-800 text-ink-300 hover:bg-ink-700'}`}>
-            Now
-          </button>
-          <button onClick={() => setAt(tonight)}
-            className={`min-h-10 shrink-0 rounded-lg px-3 text-sm font-medium ${at === tonight ? 'bg-beacon-400 text-ink-950' : 'bg-ink-800 text-ink-300 hover:bg-ink-700'}`}>
-            Tonight 11:30 pm
-          </button>
-          <input type="datetime-local" aria-label="Choose walk time" value={at ?? ''} onChange={(e) => setAt(e.target.value || undefined)}
-            className="min-h-10 shrink-0 rounded-lg border border-ink-600 bg-ink-850 px-2 text-sm text-ink-100 [color-scheme:dark]" />
-        </div>
+    <div className="mx-auto max-w-[1600px] space-y-5">
+      {slot && data && createPortal(
+        <PlaceSearch places={data.places} streets={data.streets} areaName={data.source.area?.name ?? 'this area'} onShow={showFound} onGo={goTo} />,
+        slot,
+      )}
+
+      <header>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-beacon-400">Walker</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-4xl">Plan a safer way home.</h1>
+        <p className="mt-1.5 text-sm text-ink-300 sm:text-base">Compare street conditions before you leave.</p>
       </header>
 
-      {/* Category filters */}
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" aria-label="Filter places">
-        <button onClick={() => setOpenOnly((v) => !v)} aria-pressed={openOnly}
-          className={`min-h-9 shrink-0 rounded-full px-3 text-sm font-medium ring-1 ring-inset ${openOnly ? 'bg-beacon-400 text-ink-950 ring-beacon-400' : 'text-ink-300 ring-ink-600 hover:bg-ink-800'}`}>
-          Open at walk time only
-        </button>
-        <span className="mx-1 hidden w-px shrink-0 bg-ink-700 sm:block" />
-        {CATEGORY_ORDER.map((cat) => {
-          const n = counts[cat] ?? 0
-          const on = !hidden.has(cat)
-          return (
-            <button key={cat} onClick={() => toggle(cat)} disabled={n === 0} aria-pressed={on && n > 0}
-              className={`min-h-9 shrink-0 rounded-full px-3 text-sm ring-1 ring-inset disabled:cursor-not-allowed disabled:opacity-40 ${on ? 'bg-ink-700 text-ink-100 ring-ink-600' : 'text-ink-400 ring-ink-700 line-through'}`}>
-              {categoryMeta(cat).plural} <span className="tabular-nums text-ink-400">{n}</span>
-            </button>
-          )
-        })}
+      <div ref={planRef} className="scroll-mt-24">
+        <PlanBar start={startPt} end={endPt} places={namedPoints} picking={picking} setPicking={setPicking}
+          onSet={(w, p) => (w === 'start' ? setStartPt(p) : setEndPt(p))} onMine={useMine}
+          locating={locating === 'start' || locating === 'end' ? locating : null}
+          at={at} setAt={setAt} tonight={tonight} onCompare={compare} canCompare={!!(start && end)} loading={routeLoading} onClear={clearRoute} />
+        {locError && <div className="mt-3"><ErrorState title="Location" message={locError} /></div>}
       </div>
 
       {map.error && !data ? (
         <ErrorState message={map.error} onRetry={map.reload} />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="relative h-[56vh] min-h-[340px] min-w-0 overflow-hidden rounded-2xl border border-ink-700 lg:h-[calc(100vh-220px)]">
-            {!data ? (
-              <Skeleton className="h-full w-full rounded-none" />
-            ) : data.streets.length === 0 ? (
-              <div className="grid h-full place-items-center bg-ink-850 p-6">
-                <EmptyState icon={<MapPinIcon size={22} />} title="No map data in the database">
-                  Run the map build step (see README) to load the saved OpenStreetMap data.
-                </EmptyState>
-              </div>
-            ) : (
-              <>
-                <MapView source={data.source} streets={data.streets} places={visiblePlaces} selection={selection} onSelect={setSelection}
-                  picking={picking !== null} onPick={onPick} start={start} end={end} route={route}
-                  helpRoute={tab === 'help' ? help?.best_open?.geometry ?? null : null}
-                  reportPoint={tab === 'report' ? reportPoint : null} helpFrom={tab === 'help' ? helpFrom : null}
-                  walkRoute={session ? walkRoute : null} me={session ? me : null} />
-                <div className="pointer-events-none absolute top-3 right-3 left-14 z-[500] flex">
-                  <div className="rounded-lg bg-ink-950/90 px-3 py-1.5 text-xs text-ink-300 ring-1 ring-ink-700">
-                    {pickHint ? (
-                      <span className="font-semibold text-beacon-300">{pickHint}</span>
-                    ) : (
-                      <>Open/closed for <span className="font-semibold text-ink-100">{formatAt(data.at)}</span></>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+          <section className="sm-card flex min-w-0 flex-col p-3 sm:p-4 lg:h-[min(76vh,760px)]" aria-label="Route map">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-3">
+              <h2 className="font-semibold text-ink-100">Route map</h2>
+              {data && (
+                <p className="flex items-baseline gap-2 text-xs text-ink-400">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${map.loading ? 'bg-caution' : 'bg-safe'}`} />
+                  <span>
+                    {data.source.area?.name ?? 'Demo area'} · open/closed for <span className="font-medium text-ink-100">{formatAt(data.at)}</span>
+                  </span>
+                </p>
+              )}
+            </div>
+            {/* Category filters */}
+            <div className="sm-no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 pb-3 sm:-mx-4 sm:px-4" aria-label="Filter places">
+              <button onClick={() => setOpenOnly((v) => !v)} aria-pressed={openOnly}
+                className={`min-h-8 shrink-0 rounded-full px-3 text-xs font-medium ring-1 ring-inset ${openOnly ? 'bg-beacon-400 text-white ring-beacon-400' : 'text-ink-300 ring-ink-600 hover:bg-ink-900'}`}>
+                Open at walk time only
+              </button>
+              {CATEGORY_ORDER.map((cat) => {
+                const n = counts[cat] ?? 0
+                const on = !hidden.has(cat)
+                return (
+                  <button key={cat} onClick={() => toggle(cat)} disabled={n === 0} aria-pressed={on && n > 0}
+                    className={`min-h-8 shrink-0 rounded-full px-3 text-xs ring-1 ring-inset disabled:cursor-not-allowed disabled:opacity-40 ${on ? 'bg-lavender-50 text-ink-100 ring-lavender-200' : 'text-ink-400 ring-ink-700 line-through'}`}>
+                    {categoryMeta(cat).plural} <span className="tabular-nums text-ink-400">{n}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="relative h-[56vh] min-h-[340px] overflow-hidden rounded-xl border border-ink-700 lg:h-auto lg:min-h-0 lg:flex-1">
+              {!data ? (
+                <Skeleton className="h-full w-full rounded-none" />
+              ) : data.streets.length === 0 ? (
+                <div className="grid h-full place-items-center bg-ink-900 p-6">
+                  <EmptyState icon={<MapPinIcon size={22} />} title="No map data in the database">
+                    Run the map build step (see README) to load the saved OpenStreetMap data.
+                  </EmptyState>
+                </div>
+              ) : (
+                <>
+                  <MapView source={data.source} streets={data.streets} places={visiblePlaces} selection={selection} onSelect={setSelection}
+                    picking={picking !== null} onPick={onPick} start={start} end={end} route={route}
+                    helpRoute={tab === 'help' ? help?.best_open?.geometry ?? null : null}
+                    reportPoint={tab === 'report' ? reportPoint : null} helpFrom={tab === 'help' ? helpFrom : null}
+                    walkRoute={session ? walkRoute : null} me={session ? me : null} />
+                  {(pickHint || map.loading) && (
+                    <div className="pointer-events-none absolute top-3 right-3 left-14 z-[500] flex">
+                      <div className="rounded-lg bg-ink-950/95 px-3 py-1.5 text-xs text-ink-300 shadow-sm ring-1 ring-ink-700">
+                        {pickHint && <span className="font-semibold text-beacon-300">{pickHint}</span>}
+                        {map.loading && <span className={pickHint ? 'ml-2' : ''}>updating…</span>}
+                      </div>
+                    </div>
+                  )}
+                  {/* Legend */}
+                  <div className="pointer-events-none absolute bottom-6 left-3 z-[500] hidden flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-ink-950/95 px-3 py-2 text-[11px] text-ink-300 shadow-sm ring-1 ring-ink-700 sm:flex">
+                    {route && (
+                      <>
+                        <span className="inline-flex items-center gap-1.5"><span className="h-1 w-5 rounded-full" style={{ background: ROUTE_COLOURS.safest }} />Suggested route</span>
+                        {!route.same_route && <span className="inline-flex items-center gap-1.5"><span className="h-0 w-5 border-t-2 border-dotted" style={{ borderColor: ROUTE_COLOURS.shortest }} />Shortest route</span>}
+                      </>
                     )}
-                    {map.loading && <span className="ml-2 text-beacon-300">updating…</span>}
+                    <span className="inline-flex items-center gap-1.5">Streets:
+                      {(['green', 'yellow', 'red'] as const).map((c) => <span key={c} className="h-1 w-3 rounded-full" style={{ background: SAFETY_COLOURS[c] }} />)}
+                      score
+                    </span>
                   </div>
-                </div>
-                {/* Big buttons for phones */}
-                <div className="absolute right-3 bottom-8 z-[500] flex flex-col gap-2 lg:hidden">
-                  <button onClick={() => showPanel('help')} className="min-h-12 rounded-full bg-beacon-400 px-4 text-sm font-semibold text-ink-950 shadow-lg">Help point</button>
-                  <button onClick={() => showPanel('report')} className="min-h-12 rounded-full bg-ink-950/95 px-4 text-sm font-semibold text-ink-100 shadow-lg ring-1 ring-ink-600">Report</button>
-                </div>
-              </>
-            )}
-          </div>
+                  {/* Big buttons for phones */}
+                  <div className="absolute right-3 bottom-8 z-[500] flex flex-col gap-2 lg:hidden">
+                    <button onClick={() => showPanel('help')} className="min-h-12 rounded-full bg-beacon-400 px-4 text-sm font-semibold text-white shadow-lg">Help point</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
 
-          <aside ref={panelRef} className="min-w-0 scroll-mt-20 rounded-2xl border border-ink-700 bg-ink-850 p-4 sm:p-5 lg:h-[calc(100vh-220px)] lg:overflow-y-auto">
+          <aside ref={panelRef} className="sm-card min-w-0 scroll-mt-24 p-4 sm:p-5 lg:h-[min(76vh,760px)] lg:overflow-y-auto">
             {!data ? (
               <div className="space-y-3">
                 <Skeleton className="h-5 w-2/5" />
@@ -285,40 +352,36 @@ export default function WalkerPage() {
             ) : selection?.kind === 'street' ? (
               <StreetInfo id={selection.id} at={at} refreshKey={String(refresh)} onClose={() => setSelection(null)} onPick={setSelection} />
             ) : selectedPlace ? (
-              <PlaceInfo p={selectedPlace} onClose={() => setSelection(null)} onReported={afterReport} />
+              <PlaceInfo p={selectedPlace} centreLabel={data?.source.centre_label} onClose={() => setSelection(null)} onReported={afterReport} />
             ) : (
               <div className="space-y-5">
-                <div role="tablist" aria-label="Walker tools" className="grid grid-cols-3 gap-1 rounded-xl bg-ink-900 p-1">
+                <div role="tablist" aria-label="Walker tools" className="grid grid-cols-4 gap-1 rounded-xl bg-ink-900 p-1">
                   {(
                     [
-                      ['route', 'Route'],
+                      ['route', 'Routes'],
                       ['report', 'Report'],
-                      ['help', 'Help point'],
+                      ['help', 'Help'],
+                      ['area', 'Area'],
                     ] as const
                   ).map(([t, label]) => (
                     <button key={t} role="tab" aria-selected={tab === t} onClick={() => { setTab(t); setPicking(null) }}
-                      className={`min-h-10 rounded-lg text-sm font-medium ${tab === t ? 'bg-beacon-400 text-ink-950' : 'text-ink-300'}`}>
+                      className={`min-h-9 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-ink-850 text-ink-100 shadow-sm ring-1 ring-ink-700' : 'text-ink-400 hover:text-ink-100'}`}>
                       {label}
                     </button>
                   ))}
                 </div>
-                {locError && <ErrorState title="Location" message={locError} />}
                 {tab === 'route' && (
                   <>
-                    <RoutePanel start={start} end={end} picking={picking} setPicking={setPicking} onClear={clearRoute} route={route}
-                      loading={routeLoading} error={routeError} onRetry={findRoute} places={namedPoints}
-                      onSet={(w, p) => (w === 'start' ? setStart(p) : setEnd(p))} onMine={useMine}
-                      locating={locating === 'start' || locating === 'end' ? locating : null} at={at} />
+                    <RoutePanel start={start} end={end} route={route} loading={routeLoading} error={routeError} onRetry={findRoute} at={at} />
                     {route && start && end && (
-                      <button onClick={() => setSetupOpen(true)} className="min-h-12 w-full rounded-xl bg-beacon-400 font-semibold text-ink-950">
+                      <button onClick={() => setSetupOpen(true)} className="min-h-12 w-full rounded-xl bg-beacon-400 font-semibold text-white hover:bg-beacon-500">
                         Start Walk With Me
                       </button>
                     )}
-                    {!route && (
-                      <div className="border-t border-ink-700 pt-5">
-                        <AreaOverview data={data} onPick={setSelection} />
-                      </div>
-                    )}
+                    <button onClick={() => showPanel('help')}
+                      className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-danger/10 font-semibold text-danger ring-1 ring-danger/20 hover:bg-danger/15">
+                      <AlertIcon size={18} /> Nearest help point
+                    </button>
                   </>
                 )}
                 {tab === 'report' && (
@@ -330,11 +393,34 @@ export default function WalkerPage() {
                     onPickOnMap={() => setPicking(picking === 'help' ? null : 'help')} result={help} loading={helpLoading}
                     error={helpError} locating={locating === 'help'} />
                 )}
+                {tab === 'area' && <AreaOverview data={data} onPick={setSelection} />}
               </div>
             )}
           </aside>
         </div>
       )}
+
+      {/* Shortcuts */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-5">
+        <Shortcut icon={<ShareIcon size={20} />} title="Share your journey" onClick={shareJourney}
+          text={session ? 'Walk With Me is running — see the panel above' : route ? 'Let a trusted contact follow your walk live' : 'Plan a route first, then let a trusted contact follow it'} />
+        <Shortcut icon={<UsersIcon size={20} />} title="Report a concern" onClick={() => showPanel('report')}
+          text="Dark street, broken light, a place closed — keeps local information up to date" />
+        <Shortcut icon={<InfoIcon size={20} />} title="Travel information" onClick={() => showPanel(route ? 'route' : 'area')} text={travelInfo} />
+      </div>
     </div>
+  )
+}
+
+function Shortcut({ icon, title, text, onClick }: { icon: ReactNode; title: string; text: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="sm-card group flex min-h-20 items-center gap-4 p-4 text-left transition-shadow hover:shadow-md">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-lavender-50 text-beacon-300">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-ink-100">{title}</span>
+        <span className="block text-xs text-ink-400">{text}</span>
+      </span>
+      <ChevronRightIcon size={18} className="shrink-0 text-ink-400 transition-transform group-hover:translate-x-0.5" />
+    </button>
   )
 }

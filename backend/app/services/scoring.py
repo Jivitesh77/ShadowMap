@@ -110,6 +110,7 @@ class Photo:
     score: float
     age_minutes: float
     lighting: str | None = None
+    uncertain: bool = False  # low-confidence analysis: may lower a score, never raise it
 
 
 @dataclass
@@ -153,6 +154,17 @@ class StreetScore:
 
 
 def street_score(m_score: float, photos: list[Photo], reports: list[ReportIn]) -> StreetScore:
+    """Blueprint §7 score. Uncertain (low-confidence) photos are only allowed to make it lower:
+    the formula is applied with and without them and the lower result is used."""
+    full = _formula(m_score, photos, reports)
+    if any(p.uncertain for p in photos):
+        certain_only = _formula(m_score, [p for p in photos if not p.uncertain], reports)
+        if certain_only.score < full.score:
+            return certain_only
+    return full
+
+
+def _formula(m_score: float, photos: list[Photo], reports: list[ReportIn]) -> StreetScore:
     """Blueprint §7: S = w * S_photo + (1 - w) * S_map + R.
     With several photos, the newest ones are averaged, each weighted by its own freshness;
     w is the freshness of the newest photo, so the score slides back to the map score as photos age."""

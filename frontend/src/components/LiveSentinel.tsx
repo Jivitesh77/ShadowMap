@@ -271,7 +271,7 @@ export function LiveSentinel() {
         </label>
         <label className="block text-sm">
           <span className="text-ink-400">Photo every {interval} seconds</span>
-          <input type="range" min={5} max={10} value={interval} onChange={(e) => setIntervalS(Number(e.target.value))} className="mt-2 w-full accent-[#f5b83d]" />
+          <input type="range" min={5} max={10} value={interval} onChange={(e) => setIntervalS(Number(e.target.value))} className="mt-2 w-full accent-[#6a6fd2]" />
         </label>
         <div className="space-y-2 text-sm">
           <label className="flex items-center gap-2"><input type="checkbox" checked={requireMoving} onChange={(e) => setRequireMoving(e.target.checked)} /> Only while moving (above {MIN_SPEED_KMH} km/h)</label>

@@ -11,6 +11,7 @@ from app.routers.map import parse_at
 from app.services.geo import point_to_line_m
 from app.services.routing import RouteError, Step, StreetEdge, path_length, plan, same_path
 from app.services.scoring import StreetScore
+from app.services import cities
 from app.services.street_state import PlaceAt, places_at, score_streets
 
 router = APIRouter(prefix="/api")
@@ -25,6 +26,7 @@ class RouteRequest(BaseModel):
     start: Point
     end: Point
     at: str | None = None  # India time of the walk, e.g. 2026-10-30T23:30; missing = now
+    city: str | None = None  # demo city; default: the default city
 
 
 def summarise(steps: list[Step], scores: dict[int, StreetScore], streets: dict[int, models.Street], places: list[PlaceAt]) -> dict:
@@ -86,17 +88,18 @@ def summarise(steps: list[Step], scores: dict[int, StreetScore], streets: dict[i
 @router.post("/route")
 def route(req: RouteRequest, db: Session = Depends(get_db)):
     at = parse_at(req.at)
-    streets = {s.id: s for s in db.scalars(select(models.Street)).all()}
+    city = cities.resolve(req.city)
+    streets = {s.id: s for s in db.scalars(select(models.Street).where(models.Street.city == city)).all()}
     if not streets:
-        raise HTTPException(503, "No map data loaded. Run the map build step first.")
-    scores = score_streets(db, at)
+        raise HTTPException(503, f"No map data loaded for {city}. Run the map build step first.")
+    scores = score_streets(db, at, city)
     edges = [StreetEdge(s.id, s.start_node, s.end_node, s.length_m, s.geometry) for s in streets.values()]
     try:
         pair = plan(edges, {k: v.score for k, v in scores.items()}, (req.start.lat, req.start.lon), (req.end.lat, req.end.lon))
     except RouteError as err:
         raise HTTPException(422, {"code": err.code, "message": err.message})
 
-    places = places_at(db, at)
+    places = places_at(db, at, city)
     shortest = summarise(pair.shortest, scores, streets, places)
     safest = summarise(pair.safest, scores, streets, places)
     identical = same_path(pair.shortest, pair.safest)
@@ -104,6 +107,9 @@ def route(req: RouteRequest, db: Session = Depends(get_db)):
     notes = []
     if identical:
         notes.append("The safest route is the same as the shortest route: no other way through the mapped streets scores better.")
+    if pair.main_network_only:
+        notes.append("A chosen point was nearest to a short path that does not connect to other mapped streets, "
+                     "so the route starts or ends on the nearest connected street instead (see the snap distance).")
     if not pair.safest_within_limit:
         notes.append(
             f"The most cautious route would be more than {round((config.MAX_DETOUR_RATIO - 1) * 100)}% longer than the shortest, "
@@ -124,6 +130,7 @@ def route(req: RouteRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return {
+        "city": city,
         "at": at.isoformat(timespec="minutes"),
         "start": {"requested": req.start.model_dump(), "snapped": pair.start.point, "snap_distance_m": round(pair.start.distance_m)},
         "end": {"requested": req.end.model_dump(), "snapped": pair.end.point, "snap_distance_m": round(pair.end.distance_m)},

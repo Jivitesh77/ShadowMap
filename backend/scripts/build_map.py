@@ -23,7 +23,7 @@ DEMO_DATA = Path(__file__).resolve().parents[2] / "assets" / "demo-data"
 
 
 def latest_osm_file() -> Path:
-    files = sorted(DEMO_DATA.glob("osm_*.json"))
+    files = sorted(DEMO_DATA.glob("osm_*.json"))  # DEMO_DATA is set to the chosen city's folder in main()
     if not files:
         sys.exit("No osm_*.json in assets/demo-data. Run: .venv/bin/python -m scripts.fetch_osm")
     return files[-1]
@@ -188,12 +188,27 @@ def merge_verified(osm_places: list[models.Place], verified: list[dict]) -> tupl
 
 
 def main() -> int:
-    if "--if-empty" in sys.argv:  # used at server start on a host: fill a new database, never rebuild a used one
+    global DEMO_DATA
+    from app.services.cities import city_dir, city_ids, default_city
+    cities = city_ids() if "--all" in sys.argv else [sys.argv[sys.argv.index("--city") + 1] if "--city" in sys.argv else default_city()]
+    for city in cities:
+        DEMO_DATA = city_dir(city)
+        code = build_city(city)
+        if code:
+            return code
+    return 0
+
+
+def build_city(city: str) -> int:
+    if "--if-empty" in sys.argv:  # used at server start on a host: fill a new city, never rebuild a used one
         init_db()
         with Session(engine) as db:
-            if db.scalar(select(func.count()).select_from(models.Street)):
-                print("Map data already present; nothing to do.")
+            if db.scalar(select(func.count()).select_from(models.Street).where(models.Street.city == city)):
+                print(f"[{city}] map data already present; nothing to do.")
                 return 0
+    if not sorted(DEMO_DATA.glob("osm_*.json")):
+        print(f"[{city}] no saved OpenStreetMap file; skipped (run scripts.fetch_osm --city {city}).")
+        return 0
     src = latest_osm_file()
     data = json.loads(src.read_text())
     area = data["shadowmap"]["area"]
@@ -203,23 +218,27 @@ def main() -> int:
     osm_places = build_osm_places(data["elements"], bbox)
     all_places, merge_log = merge_verified(osm_places, load_verified_places(bbox))
 
+    for obj in streets + all_places:
+        obj.city = city
     init_db()
     with Session(engine, expire_on_commit=False) as db:
-        used = db.scalar(select(func.count()).select_from(models.Observation)) + db.scalar(
-            select(func.count()).select_from(models.Report)
-        )
+        street_ids = select(models.Street.id).where(models.Street.city == city)
+        place_ids = select(models.Place.id).where(models.Place.city == city)
+        used = db.scalar(select(func.count()).select_from(models.Observation).where(models.Observation.street_id.in_(street_ids))) + \
+            db.scalar(select(func.count()).select_from(models.Report).where(
+                models.Report.street_id.in_(street_ids) | models.Report.place_id.in_(place_ids)))
         if used:
-            sys.exit("Observations or reports already exist and point at current street ids. Not rebuilding the map.")
-        # Map tables only hold data re-created from the saved files above, so they are rebuilt from scratch.
-        models.Street.__table__.drop(db.connection(), checkfirst=True)
-        models.Place.__table__.drop(db.connection(), checkfirst=True)
-        models.Street.__table__.create(db.connection())
-        models.Place.__table__.create(db.connection())
+            sys.exit(f"[{city}] observations or reports already point at this city's street ids. Not rebuilding.")
+        # Only THIS city's map rows are replaced; other cities are never touched.
+        for model in (models.RouteUse,):
+            db.execute(model.__table__.delete().where(model.street_id.in_(street_ids)))
+        db.execute(models.Street.__table__.delete().where(models.Street.city == city))
+        db.execute(models.Place.__table__.delete().where(models.Place.city == city))
         db.add_all(streets + all_places)
         db.commit()
 
     lat0, lon0 = area["center"]
-    print(f"Built map from {src.name} (OSM data as of {data['shadowmap'].get('osm_data_timestamp')})")
+    print(f"[{city}] built map from {src.name} (OSM data as of {data['shadowmap'].get('osm_data_timestamp')})")
     print(f"Street segments: {len(streets)}  total length {sum(s.length_m for s in streets) / 1000:.1f} km")
     print("  by class:", dict(Counter(s.road_class for s in streets)))
     print("  by OSM type:", dict(Counter(s.road_type for s in streets)))
@@ -237,7 +256,7 @@ def main() -> int:
         if p.category in ("police", "hospital", "fuel", "pharmacy") and d < nearest.get(p.category, (1e12,))[0]:
             nearest[p.category] = (d, p.name)
     for cat, (d, name) in sorted(nearest.items()):
-        print(f"  nearest {cat}: {name or '(no name)'} — {d / 1000:.1f} km from campus centre")
+        print(f"  nearest {cat}: {name or '(no name)'} — {d / 1000:.1f} km from the area centre")
     return 0
 
 

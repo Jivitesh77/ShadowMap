@@ -1,4 +1,4 @@
-// A small Leaflet map for the contact and police screens: planned route, live position, where she last moved, destination.
+// A small Leaflet map for the contact and police screens: planned route, live position, where the walker last moved, destination.
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { useEffect } from 'react'
@@ -39,8 +39,8 @@ export function LiveMap({
       <Follow target={live} route={route} />
       {route && (
         <>
-          <Polyline positions={route} interactive={false} pathOptions={{ color: '#070c16', weight: 10, opacity: 0.8 }} />
-          <Polyline positions={route} interactive={false} pathOptions={{ color: '#f5b83d', weight: 5 }} />
+          <Polyline positions={route} interactive={false} pathOptions={{ color: '#ffffff', weight: 10, opacity: 0.95 }} />
+          <Polyline positions={route} interactive={false} pathOptions={{ color: '#5a5fc8', weight: 5 }} />
         </>
       )}
       {dest && <Marker position={dest} icon={dot('sm-endpoint', 'B')}><Tooltip>Destination</Tooltip></Marker>}

@@ -2,10 +2,15 @@
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, utcnow
+
+
+def _default_city() -> str:
+    from app.services.cities import default_city  # rows created without a city belong to the default city
+    return default_city()
 
 
 class Street(Base):
@@ -15,6 +20,7 @@ class Street(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     osm_way_id: Mapped[int] = mapped_column(Integer, index=True)
+    city: Mapped[str | None] = mapped_column(String(30), index=True, default=_default_city)  # demo city id (assets/demo-data/cities.json)
     name: Mapped[str | None] = mapped_column(String(200))
     road_type: Mapped[str] = mapped_column(String(50))  # OSM highway tag, e.g. primary, residential, footway
     road_class: Mapped[str] = mapped_column(String(20))  # main / residential / lane / underpass (blueprint §7)
@@ -37,6 +43,7 @@ class Place(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     osm_id: Mapped[str | None] = mapped_column(String(40), unique=True)  # e.g. "node/123"
+    city: Mapped[str | None] = mapped_column(String(30), index=True, default=_default_city)
     name: Mapped[str | None] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(50), index=True)
     lat: Mapped[float] = mapped_column(Float)
@@ -61,6 +68,8 @@ class Observation(Base):
     """One analysed Sentinel photo or video frame (blueprint §6)."""
 
     __tablename__ = "observations"
+    # Live Sentinel duplicate/jump check on every upload: this device's newest photo.
+    __table_args__ = (Index("ix_observations_device_captured", "device_id", "captured_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     street_id: Mapped[int | None] = mapped_column(ForeignKey("streets.id"), index=True)
@@ -96,6 +105,17 @@ class Observation(Base):
     device_id: Mapped[str | None] = mapped_column(String(64))  # anonymous live-Sentinel device id
     analysis_error: Mapped[str | None] = mapped_column(String(300))
 
+    # M6 privacy pipeline. photo_path = ORIGINAL (restricted, never served; deleted after analysis or at photo_delete_at).
+    redaction_status: Mapped[str | None] = mapped_column(String(20))  # None/pending, done, failed
+    redacted_path: Mapped[str | None] = mapped_column(String(300))  # blurred copy in REDACTED_DIR
+    faces_blurred: Mapped[int | None] = mapped_column(Integer)
+    plates_blurred: Mapped[int | None] = mapped_column(Integer)
+    photo_public: Mapped[bool | None] = mapped_column(Boolean, default=False)  # True only when redaction AND AI privacy check passed
+    privacy_note: Mapped[str | None] = mapped_column(String(200))
+    uncertainty: Mapped[str | None] = mapped_column(String(240))
+    analysis_attempts: Mapped[int | None] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime)
+
     photo_path: Mapped[str | None] = mapped_column(String(300))  # cleared when the photo is deleted
     photo_delete_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -107,6 +127,8 @@ class Report(Base):
     """A one-tap community report (blueprint §10). No free text, by design."""
 
     __tablename__ = "reports"
+    # Rate limit and duplicate check run on every new report: device + time. Place status reads reports by place.
+    __table_args__ = (Index("ix_reports_device_created", "device_id", "created_at"), Index("ix_reports_place_id", "place_id"))
 
     id: Mapped[int] = mapped_column(primary_key=True)
     street_id: Mapped[int | None] = mapped_column(ForeignKey("streets.id"), index=True)
@@ -127,14 +149,18 @@ class Walk(Base):
     __tablename__ = "walks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)  # random id used in the trip link
+    # Optimistic locking: every UPDATE checks and raises this number, so a write from an older copy of the walk is
+    # refused instead of overwriting newer state (background clock vs. walker's requests). See services/walks.save.
+    version: Mapped[int | None] = mapped_column(Integer)
     walker_name: Mapped[str] = mapped_column(String(80))
     walker_phone: Mapped[str | None] = mapped_column(String(30))
     route: Mapped[list] = mapped_column(JSON)  # [[lat, lon], ...]
+    city: Mapped[str | None] = mapped_column(String(30), index=True, default=_default_city)  # city the walk was planned in
     dest_lat: Mapped[float] = mapped_column(Float)
     dest_lon: Mapped[float] = mapped_column(Float)
     pin_hash: Mapped[str] = mapped_column(String(200))
     duress_pin_hash: Mapped[str | None] = mapped_column(String(200))
-    status: Mapped[str] = mapped_column(String(20), default="active")  # active / checking / alert / arrived / ended
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active / checking / alert / arrived / ended / expired
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     expected_arrival_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_lat: Mapped[float | None] = mapped_column(Float)
@@ -159,9 +185,15 @@ class Walk(Base):
     duress: Mapped[bool | None] = mapped_column(Boolean, default=False)  # never revealed to the walker's screen
     simulated: Mapped[bool | None] = mapped_column(Boolean, default=False)  # demo: positions simulated along the route
     events: Mapped[list | None] = mapped_column(JSON)  # timeline for contacts: [{at, kind, text}]
+    last_accuracy_m: Mapped[float | None] = mapped_column(Float)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)  # contact link switched off immediately
+    pin_failures: Mapped[int | None] = mapped_column(Integer, default=0)
+    pin_locked_until: Mapped[datetime | None] = mapped_column(DateTime)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="walk", cascade="all, delete-orphan")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="walk", cascade="all, delete-orphan")
+
+    __mapper_args__ = {"version_id_col": version}
 
 
 class Contact(Base):
@@ -207,6 +239,7 @@ class VideoJob(Base):
     source_kind: Mapped[str] = mapped_column(String(10))  # "upload" or "asset" (file already in assets/videos)
     file_path: Mapped[str] = mapped_column(String(500))  # uploads: our copy in data/videos; assets: read in place
     sentinel_label: Mapped[str] = mapped_column(String(80))
+    city: Mapped[str | None] = mapped_column(String(30), default=_default_city)
     status: Mapped[str] = mapped_column(String(20), default="queued")  # queued / processing / done / failed
     stage: Mapped[str | None] = mapped_column(String(40))
     frames_total: Mapped[int | None] = mapped_column(Integer)

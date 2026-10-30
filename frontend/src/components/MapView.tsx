@@ -4,7 +4,7 @@ import L from 'leaflet'
 import { useEffect, useMemo } from 'react'
 import { MapContainer, Marker, Polyline, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import type { LatLon, MapSource, Place, RouteResult, Street } from '../api'
-import { ROAD_CLASS, SAFETY_COLOURS, categoryMeta, formatAge, placeName } from '../lib/mapMeta'
+import { ROAD_CLASS, SAFETY_COLOURS, categoryMeta, formatAge, placeName, ROUTE_COLOURS } from '../lib/mapMeta'
 import { tileProvider } from '../lib/mapProvider'
 
 export type Selection = { kind: 'street'; id: number } | { kind: 'place'; id: number } | null
@@ -96,10 +96,14 @@ export function MapView({
   const center = source.area?.center ?? [26.0804, 91.5605]
   const b = source.area?.bbox
   const focus = useMemo<[number, number] | null>(() => {
+    if (selection?.kind === 'street') {
+      const s = streets.find((x) => x.id === selection.id)
+      return s ? (s.geometry[Math.floor(s.geometry.length / 2)] as [number, number]) : null
+    }
     if (selection?.kind !== 'place') return null
     const p = places.find((x) => x.id === selection.id)
     return p ? [p.lat, p.lon] : null
-  }, [selection, places])
+  }, [selection, places, streets])
 
   // draw the selected street last so it sits on top
   const ordered = useMemo(() => {
@@ -110,7 +114,8 @@ export function MapView({
   const dim = !!route // fade streets while routes are shown, so the routes stand out
 
   return (
-    <MapContainer center={center} zoom={15} className={`h-full w-full ${picking ? 'sm-picking' : ''}`} zoomControl>
+    // preferCanvas: one canvas instead of thousands of SVG paths, so dense cities (Delhi: ~6,000 street pieces) stay smooth
+    <MapContainer center={center} zoom={15} className={`h-full w-full ${picking ? 'sm-picking' : ''}`} zoomControl preferCanvas>
       <TileLayer
         className="sm-tiles"
         url={tileProvider.url}
@@ -124,7 +129,7 @@ export function MapView({
       {b && (
         <Rectangle
           bounds={[[b.south, b.west], [b.north, b.east]]}
-          pathOptions={{ color: '#f5b83d', weight: 1.5, opacity: 0.6, dashArray: '6 6', fill: false }}
+          pathOptions={{ color: ROUTE_COLOURS.safest, weight: 1.5, opacity: 0.55, dashArray: '6 6', fill: false }}
           interactive={false}
         />
       )}
@@ -138,7 +143,7 @@ export function MapView({
               key={`${s.id}-halo`}
               positions={s.geometry}
               interactive={false}
-              pathOptions={{ color: '#ffffff', weight: style.weight + 7, opacity: 0.9, lineCap: 'round' }}
+              pathOptions={{ color: ROUTE_COLOURS.safest, weight: style.weight + 7, opacity: 0.35, lineCap: 'round' }}
             />
           ),
           <Polyline
@@ -179,14 +184,14 @@ export function MapView({
             <Polyline
               positions={route.shortest.geometry}
               interactive={false}
-              pathOptions={{ color: '#e6ebf3', weight: 4, opacity: 0.95, dashArray: '2 9', lineCap: 'round' }}
+              pathOptions={{ color: ROUTE_COLOURS.shortest, weight: 4, opacity: 0.95, dashArray: '2 9', lineCap: 'round' }}
             />
           )}
-          <Polyline positions={route.safest.geometry} interactive={false} pathOptions={{ color: '#070c16', weight: 11, opacity: 0.85 }} />
+          <Polyline positions={route.safest.geometry} interactive={false} pathOptions={{ color: ROUTE_COLOURS.halo, weight: 11, opacity: 0.95 }} />
           <Polyline
             positions={route.safest.geometry}
             interactive={false}
-            pathOptions={{ color: '#f5b83d', weight: 6, opacity: 1, lineCap: 'round', lineJoin: 'round' }}
+            pathOptions={{ color: ROUTE_COLOURS.safest, weight: 6, opacity: 1, lineCap: 'round', lineJoin: 'round' }}
           />
         </>
       )}
@@ -209,14 +214,14 @@ export function MapView({
       })}
       {helpRoute && helpRoute.length > 1 && (
         <>
-          <Polyline positions={helpRoute} interactive={false} pathOptions={{ color: '#070c16', weight: 10, opacity: 0.8 }} />
-          <Polyline positions={helpRoute} interactive={false} pathOptions={{ color: '#60a5fa', weight: 5, dashArray: '8 6', lineCap: 'round' }} />
+          <Polyline positions={helpRoute} interactive={false} pathOptions={{ color: ROUTE_COLOURS.halo, weight: 10, opacity: 0.95 }} />
+          <Polyline positions={helpRoute} interactive={false} pathOptions={{ color: ROUTE_COLOURS.help, weight: 5, dashArray: '8 6', lineCap: 'round' }} />
         </>
       )}
       {walkRoute && walkRoute.length > 1 && (
         <>
-          <Polyline positions={walkRoute} interactive={false} pathOptions={{ color: '#070c16', weight: 11, opacity: 0.85 }} />
-          <Polyline positions={walkRoute} interactive={false} pathOptions={{ color: '#f5b83d', weight: 6, lineCap: 'round' }} />
+          <Polyline positions={walkRoute} interactive={false} pathOptions={{ color: ROUTE_COLOURS.halo, weight: 11, opacity: 0.95 }} />
+          <Polyline positions={walkRoute} interactive={false} pathOptions={{ color: ROUTE_COLOURS.walk, weight: 6, lineCap: 'round' }} />
         </>
       )}
       {me && (

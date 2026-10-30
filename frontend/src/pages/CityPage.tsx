@@ -1,5 +1,6 @@
 // City / municipality dashboard (blueprint §11): dark-street hotspots and a ranked streetlight repair list.
 import { API_BASE, api } from '../api'
+import { withCity } from '../lib/city'
 import { useApi } from '../hooks/useApi'
 import { LightbulbIcon } from '../components/Icons'
 import { EmptyState, ErrorState, LoadingBlock } from '../components/States'
@@ -16,7 +17,7 @@ export default function CityPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <PageHeader eyebrow="Operations" title="City dashboard"
         description="Dark streets and broken streetlights, with evidence, ranked by how many people walk or route through them — fixing those helps the most people first."
-        aside={<a href={`${API_BASE}/api/city/repairs.csv`} download className="rounded-lg bg-beacon-400 px-4 py-2 text-sm font-semibold text-ink-950">Download CSV</a>} />
+        aside={<a href={`${API_BASE}${withCity('/api/city/repairs.csv')}`} download className="rounded-lg bg-beacon-400 px-4 py-2 text-sm font-semibold text-ink-950">Download CSV</a>} />
 
       {r.error && !d ? <ErrorState message={r.error} onRetry={r.reload} /> : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -61,7 +62,10 @@ export default function CityPage() {
                 <div className="mt-2 text-xs text-ink-300">
                   <p className="text-ink-400">Evidence (latest {date(i.latest_dark_utc)}):</p>
                   {i.evidence.length ? i.evidence.map((e) => (
-                    <p key={e.observation_id}>• {e.description ?? `${e.lighting} lighting`} — {e.sentinel}, {date(e.captured_utc)} <span className="text-ink-400">(photo shown after blurring)</span></p>
+                    <div key={e.observation_id} className="mt-1">
+                      {e.photo_available && e.photo_url && <img src={API_BASE + e.photo_url} alt="Street photo, faces and plates blurred" loading="lazy" className="mb-1 max-w-xs rounded-md" />}
+                      <p>• {e.description ?? `${e.lighting} lighting`} — {e.sentinel}, {date(e.captured_utc)}{!e.photo_available && <span className="text-ink-400"> (no public photo)</span>}</p>
+                    </div>
                   )) : <p>Community reports only; no Sentinel photo of this street yet.</p>}
                 </div>
                 <a href={`https://www.openstreetmap.org/way/${i.osm_way_id}`} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-beacon-300 hover:underline">Location on OpenStreetMap ↗</a>

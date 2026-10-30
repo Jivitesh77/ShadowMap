@@ -77,7 +77,7 @@ export function BriefingPanel({ start, end, at }: { start: LatLon; end: LatLon; 
             </span>
           </div>
           {data.note && <p className="text-xs text-ink-400">{data.note}</p>}
-          {voiceNote && <p className="text-xs text-caution">{voiceNote}</p>}
+          {voiceNote && <p className="text-xs text-caution-ink">{voiceNote}</p>}
         </>
       )}
     </section>

@@ -18,6 +18,8 @@ from app.routers import walker as walker_router
 from app.routers import dashboards as dashboards_router
 from app.routers import walks as walks_router
 from app.services.walk_monitor import monitor as walk_monitor
+from app.services.photo_worker import worker as photo_worker
+from app.routers import photos as photos_router
 from app.services.video_jobs import worker as video_worker
 
 
@@ -27,9 +29,11 @@ async def lifespan(_app: FastAPI):
     if config.START_WORKERS:
         video_worker.start()  # background queue for night-ride videos
         walk_monitor.start()  # Walk With Me clock (alerts even if the phone goes quiet)
+        photo_worker.start()  # M6: blur faces/plates, Gemini analysis, privacy approval
     yield
     video_worker.stop()
     walk_monitor.stop()
+    photo_worker.stop()
 
 
 app = FastAPI(title="ShadowMap API", lifespan=lifespan)
@@ -47,6 +51,7 @@ app.include_router(reports_router.router)
 app.include_router(walker_router.router)
 app.include_router(walks_router.router)
 app.include_router(dashboards_router.router)
+app.include_router(photos_router.router)
 
 
 @app.get("/")
@@ -73,17 +78,22 @@ def health(db: Session = Depends(get_db)):
 
 
 @app.get("/api/summary")
-def summary(db: Session = Depends(get_db)):
-    """Real row counts per table. Screens use this to show honest empty states."""
-    tables = {
-        "streets": models.Street,
-        "places": models.Place,
-        "observations": models.Observation,
-        "reports": models.Report,
-        "walks": models.Walk,
-        "alerts": models.Alert,
+def summary(city: str | None = None, db: Session = Depends(get_db)):
+    """Real row counts. Map, photo and report counts are for one city; walks and alerts are for all cities."""
+    from app.services import cities
+    city = cities.resolve(city)
+    street_ids = select(models.Street.id).where(models.Street.city == city)
+    place_ids = select(models.Place.id).where(models.Place.city == city)
+    count = lambda model, *where: db.scalar(select(func.count()).select_from(model).where(*where))
+    counts = {
+        "city": city,
+        "streets": count(models.Street, models.Street.city == city),
+        "places": count(models.Place, models.Place.city == city),
+        "observations": count(models.Observation, models.Observation.street_id.in_(street_ids)),
+        "reports": count(models.Report, models.Report.street_id.in_(street_ids) | models.Report.place_id.in_(place_ids)),
+        "walks": count(models.Walk),
+        "alerts": count(models.Alert),
     }
-    counts = {name: db.scalar(select(func.count()).select_from(model)) for name, model in tables.items()}
     counts["active_walks"] = db.scalar(
         select(func.count()).select_from(models.Walk).where(models.Walk.status.in_(["active", "checking", "alert"]))
     )

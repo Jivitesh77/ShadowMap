@@ -15,6 +15,7 @@ from app.routers.map import parse_at
 from app.routers.route import Point, RouteRequest, route as compute_route
 from app.services import walks as W
 from app.services.geo import haversine_m, locate_on_line
+from app.services import cities
 from app.services.street_state import places_at
 
 router = APIRouter(prefix="/api")
@@ -79,6 +80,7 @@ class StartWalk(BaseModel):
     start: Point
     end: Point
     simulated: bool = False  # demo only: positions are simulated along the route
+    city: str | None = None
 
 
 @router.post("/walks")
@@ -87,12 +89,12 @@ def start_walk(req: StartWalk, db: Session = Depends(get_db)):
         raise _err(422, "same_pins", "The duress PIN must be different from your PIN.")
     if req.simulated and not config.DEMO_MODE:
         raise _err(422, "no_simulation", "Simulated walks are only allowed in demo mode.")
-    r = compute_route(RouteRequest(start=req.start, end=req.end), db)  # the server plans the route itself
+    r = compute_route(RouteRequest(start=req.start, end=req.end, city=req.city), db)  # the server plans the route itself
     safest = r["safest"]
     now = utcnow()
     token = secrets.token_urlsafe(24)
     walk = models.Walk(
-        id=secrets.token_urlsafe(12), walker_name=req.walker_name, walker_phone=req.walker_phone,
+        id=secrets.token_urlsafe(12), city=r["city"], walker_name=req.walker_name, walker_phone=req.walker_phone,
         route=safest["geometry"], route_length_m=safest["distance_m"], dest_lat=req.end.lat, dest_lon=req.end.lon,
         start_lat=req.start.lat, start_lon=req.start.lon, pin_hash=W.hash_pin(req.pin),
         duress_pin_hash=W.hash_pin(req.duress_pin) if req.duress_pin else None, status="active", started_at=now,
@@ -122,7 +124,10 @@ def walker_view(walk: models.Walk) -> dict:
             "check_started_utc": _iso(walk.check_started_at) if asking else None, "escalation": 0 if walk.duress else walk.escalation,
             "expected_arrival_utc": _iso(walk.expected_arrival_at), "route": walk.route, "dest": [walk.dest_lat, walk.dest_lon],
             "last": [walk.last_lat, walk.last_lon], "contacts": [{"name": c.name, "phone": c.phone} for c in walk.contacts],
-            "simulated": walk.simulated, "timers": config.WALK_TIMERS}
+            "simulated": walk.simulated, "timers": config.WALK_TIMERS,
+            "last_position_utc": _iso(walk.last_position_at), "last_accuracy_m": walk.last_accuracy_m,
+            "sharing": walk.status in ("active", "checking", "alert"),
+            "pin_locked_until_utc": _iso(walk.pin_locked_until)}
 
 
 @router.get("/walks/{walk_id}/state")
@@ -134,16 +139,28 @@ class Position(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
     battery_pct: int | None = Field(None, ge=0, le=100)
+    accuracy_m: float | None = Field(None, ge=0, le=100000)
+
+
+def _save(db: Session, walk: models.Walk, change):
+    """Version-checked write with retries on the newest state (services/walks.save)."""
+    try:
+        return W.save(db, walk, change)
+    except W.WalkConflict:
+        raise _err(503, "busy", "The walk was being updated at the same moment. Please try again.")
 
 
 @router.post("/walks/{walk_id}/position")
 def walk_position(req: Position, walk: models.Walk = Depends(walker_walk), db: Session = Depends(get_db)):
-    if walk.status in ("ended", "arrived"):
-        return walker_view(walk)
     now = utcnow()
-    W.update_position(db, walk, now, req.lat, req.lon, req.battery_pct)
-    W.evaluate(db, walk, now)
-    db.commit()
+
+    def change():
+        if walk.status in W.FINISHED:
+            return  # sharing has stopped: positions are no longer accepted
+        W.update_position(db, walk, now, req.lat, req.lon, req.battery_pct, req.accuracy_m)
+        W.evaluate(db, walk, now)
+
+    _save(db, walk, change)
     return walker_view(walk)
 
 
@@ -151,28 +168,39 @@ class PinIn(BaseModel):
     pin: str = Field(pattern=r"^\d{4}$")
 
 
-@router.post("/walks/{walk_id}/safe")
-def walk_safe(req: PinIn, walk: models.Walk = Depends(walker_walk), db: Session = Depends(get_db)):
-    result = W.answer_check(db, walk, utcnow(), req.pin)
-    db.commit()
+class EndIn(PinIn):
+    revoke: bool = False  # also switch the contact link off immediately
+
+
+def _pin_error(result: str) -> None:
+    if result == "finished":  # same answer for every PIN, so the duress PIN stays invisible here too
+        raise _err(409, "walk_finished", "This walk has already finished. Location sharing stays off.")
+    if result == "locked":
+        raise _err(429, "pin_locked", f"Too many wrong PINs. Wait {config.WALK_PIN_LOCK_S} seconds and try again.")
     if result == "wrong":
         raise _err(403, "wrong_pin", "That PIN is not correct.")
+
+
+@router.post("/walks/{walk_id}/safe")
+def walk_safe(req: PinIn, walk: models.Walk = Depends(walker_walk), db: Session = Depends(get_db)):
+    now = utcnow()
+    result = _save(db, walk, lambda: W.answer_check(db, walk, now, req.pin))
+    _pin_error(result)
     return {"ok": True, **walker_view(walk)}  # same answer for the real and the duress PIN
 
 
 @router.post("/walks/{walk_id}/sos")
 def walk_sos(walk: models.Walk = Depends(walker_walk), db: Session = Depends(get_db)):
-    W.sos(db, walk, utcnow())
-    db.commit()
+    now = utcnow()
+    _save(db, walk, lambda: W.sos(db, walk, now))  # after the end: police alerted, walk stays finished
     return {"ok": True}
 
 
 @router.post("/walks/{walk_id}/end")
-def walk_end(req: PinIn, walk: models.Walk = Depends(walker_walk), db: Session = Depends(get_db)):
-    result = W.end_walk(db, walk, utcnow(), req.pin)
-    db.commit()
-    if result == "wrong":
-        raise _err(403, "wrong_pin", "That PIN is not correct.")
+def walk_end(req: EndIn, walk: models.Walk = Depends(walker_walk), db: Session = Depends(get_db)):
+    now = utcnow()
+    result = _save(db, walk, lambda: W.end_walk(db, walk, now, req.pin, req.revoke))
+    _pin_error(result)
     return {"ok": True, "status": "ended"}  # same answer for the duress PIN
 
 
@@ -186,36 +214,51 @@ def walk_note(req: Note, walk: models.Walk = Depends(walker_walk), db: Session =
     """Tell contacts the walker is calling for help, so someone knows if the call drops (blueprint §9)."""
     if req.target != "fake":
         label = {"112": "112 (emergency)", "181": "181 (Women Helpline)", "police": "the nearest police station", "contact": "a trusted contact"}[req.target]
-        W.add_event(walk, utcnow(), "calling", f"{walk.walker_name} is calling {label}." + (" (Demo: a team phone rings instead.)" if config.DEMO_MODE else ""))
-        db.commit()
+        now = utcnow()
+        text = f"{walk.walker_name} is calling {label}." + (" (Demo: a team phone rings instead.)" if config.DEMO_MODE else "")
+        _save(db, walk, lambda: W.add_event(walk, now, "calling", text))
     return {"ok": True}
 
 
 @router.get("/walks/{walk_id}/contact")
 def contact_view(walk_id: str, db: Session = Depends(get_db)):
-    """The trusted contact's live trip page. Location is shared only while the walk is running."""
+    """The trusted contact's live trip page. Location, route and timeline only while the walk is running.
+    No phone numbers (anyone holding the link could see them). Revoked links stop at once; ended ones after
+    WALK_LINK_FINAL_HOURS, showing only the final status meanwhile."""
     walk = get_walk(db, walk_id)
+    if walk.revoked_at:
+        raise _err(410, "revoked", "The walker has switched this trip link off.")
     live = walk.status in ("active", "checking", "alert")
-    if not live and walk.ended_at and utcnow() - walk.ended_at > timedelta(hours=1):
+    if not live and walk.ended_at and utcnow() - walk.ended_at > timedelta(hours=config.WALK_LINK_FINAL_HOURS):
         raise _err(410, "expired", "This trip link has expired because the walk ended.")
-    alerts = db.scalars(select(models.Alert).where(models.Alert.walk_id == walk.id, models.Alert.level.in_(["contacts", "police", "info"]))
-                        .order_by(models.Alert.created_at)).all()
-    return {
+    base = {
         "walker_name": walk.walker_name,
-        "walker_phone": walk.walker_phone,
         "status": walk.status,
-        "duress": bool(walk.duress),
-        "escalation": walk.escalation,
-        "trigger": walk.check_trigger,
         "started_utc": _iso(walk.started_at),
         "expected_arrival_utc": _iso(walk.expected_arrival_at),
         "ended_utc": _iso(walk.ended_at),
-        "route": walk.route if live else None,
-        "dest": [walk.dest_lat, walk.dest_lon],
-        "last": [walk.last_lat, walk.last_lon] if live else None,
-        "last_position_utc": _iso(walk.last_position_at) if live else None,
-        "battery_pct": walk.battery_pct if live else None,
         "simulated": walk.simulated,
+    }
+    if not live:  # final status only: the outcome, nothing about where the walker went
+        final = next((e for e in reversed(walk.events or []) if e["kind"] in ("arrived", "ended", "expired")), None)
+        # An SOS / duress PIN after the end is shown too (contacts must know), still without any position.
+        after = [e for e in walk.events or [] if e["kind"] in ("sos_after_end", "duress_after_end")]
+        return {**base, "duress": bool(walk.duress), "escalation": walk.escalation, "trigger": None, "route": None,
+                "dest": None, "last": None, "last_position_utc": None, "battery_pct": None,
+                "events": ([final] if final else []) + after, "alerts": []}
+    alerts = db.scalars(select(models.Alert).where(models.Alert.walk_id == walk.id, models.Alert.level.in_(["contacts", "police", "info"]))
+                        .order_by(models.Alert.created_at)).all()
+    return {
+        **base,
+        "duress": bool(walk.duress),
+        "escalation": walk.escalation,
+        "trigger": walk.check_trigger,
+        "route": walk.route,
+        "dest": [walk.dest_lat, walk.dest_lon],
+        "last": [walk.last_lat, walk.last_lon],
+        "last_position_utc": _iso(walk.last_position_at),
+        "last_accuracy_m": walk.last_accuracy_m,
+        "battery_pct": walk.battery_pct,
         "events": walk.events or [],
         "alerts": [{"level": a.level, "trigger": a.trigger, "status": a.status, "created_utc": _iso(a.created_at)} for a in alerts],
     }
@@ -225,14 +268,16 @@ class WhereIn(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
     at: str | None = None
+    city: str | None = None
 
 
 @router.post("/where-am-i")
 def where_am_i(req: WhereIn, db: Session = Depends(get_db)):
     """Words to tell a helpline operator: street, nearest landmark, nearest open help point, nearest police (blueprint §9)."""
     at = parse_at(req.at)
+    city = cities.resolve(req.city)
     best = None
-    for s in db.scalars(select(models.Street)).all():
+    for s in db.scalars(select(models.Street).where(models.Street.city == city)).all():
         d, _, _ = locate_on_line(req.lat, req.lon, s.geometry)
         if best is None or d < best[0]:
             best = (d, s)
@@ -240,7 +285,7 @@ def where_am_i(req: WhereIn, db: Session = Depends(get_db)):
     if best and best[0] <= 100:
         s = best[1]
         street = s.name or {"main": "an unnamed main road", "residential": "an unnamed residential street"}.get(s.road_class, "an unnamed lane")
-    places = places_at(db, at)
+    places = places_at(db, at, city)
 
     def nearest(pred):
         cands = [(haversine_m(req.lat, req.lon, pa.place.lat, pa.place.lon), pa) for pa in places if pred(pa)]

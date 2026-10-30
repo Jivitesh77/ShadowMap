@@ -295,7 +295,7 @@ export function VideoSentinel() {
           <label className="text-sm">
             <span className="text-ink-400">Recording started (India time)</span>
             <input type="datetime-local" step={1} value={recordedAt} disabled={useVideoTime} onChange={(e) => setRecordedAt(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 [color-scheme:dark] disabled:opacity-50" />
+              className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 [color-scheme:light] disabled:opacity-50" />
           </label>
           {video?.info.creation_time_utc && (
             <label className="flex items-start gap-2 text-xs text-ink-300 sm:col-span-2">

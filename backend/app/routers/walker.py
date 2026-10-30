@@ -13,7 +13,9 @@ from app.services.briefing import make_briefing, build_facts
 from app.services.geo import haversine_m
 from app.services.routing import RouteError, StreetEdge, path_length, plan
 from app.services.scoring import REPORT_EFFECTS
+from app.services import cities
 from app.services.street_state import places_at, score_streets
+from app.routers.photos import is_public
 
 router = APIRouter(prefix="/api")
 
@@ -47,9 +49,23 @@ def street_observations(street_id: int, db: Session = Depends(get_db)):
         "hazards": o.hazards,
         "description": o.description,
         "confidence": o.confidence,
-        "photo_available": False,
-        "photo_note": "Photos are shown only after faces and number plates are blurred (coming next).",
+        "uncertainty": o.uncertainty,
+        "photo_available": is_public(o),
+        "photo_url": f"/api/photos/{o.id}" if is_public(o) else None,
+        "photo_note": photo_note(o),
     } for o in rows]}
+
+
+def photo_note(o: models.Observation) -> str:
+    if is_public(o):
+        return f"Faces and number plates blurred ({o.faces_blurred or 0} face / {o.plates_blurred or 0} plate areas). Deleted after 6 hours."
+    if o.privacy_note:
+        return o.privacy_note
+    if not o.photo_path and not o.redacted_path:
+        return "Photo deleted (photos are kept at most 6 hours)."
+    if o.redaction_status == "done" and o.analysis_status == "pending":
+        return "Photo blurred; it is shown only after the AI privacy check."
+    return "Photo is being blurred."
 
 
 class BriefingRequest(RouteRequest):
@@ -59,13 +75,14 @@ class BriefingRequest(RouteRequest):
 @router.post("/route/briefing")
 def route_briefing(req: BriefingRequest, db: Session = Depends(get_db)):
     """Briefing for the safest route. The route is recalculated here, so the briefing only uses server-side data."""
-    r = compute_route(RouteRequest(start=req.start, end=req.end, at=req.at), db)
+    r = compute_route(RouteRequest(start=req.start, end=req.end, at=req.at, city=req.city), db)
     ids = {seg["street_id"] for seg in r["safest"]["segments"]}
     names = {s.id: s.name for s in db.scalars(select(models.Street).where(models.Street.id.in_(ids))).all()}
 
     observations: dict[int, dict] = {}
     for o in db.scalars(select(models.Observation).where(models.Observation.street_id.in_(ids),
-                                                        models.Observation.analysis_status == "done")
+                                                        models.Observation.analysis_status == "done",
+                                                        models.Observation.photo_public.is_(True))  # same rule as scoring
                         .order_by(models.Observation.captured_at.desc())).all():
         observations.setdefault(o.street_id, {"age_min": _age_min(o.captured_at), "lighting": o.lighting, "people": o.people,
                                               "open_places": o.open_places_count, "description": o.description,
@@ -88,6 +105,10 @@ class HelpRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
     at: str | None = None
+    city: str | None = None
+
+
+HELP_OPEN_CANDIDATES, HELP_UNKNOWN_CANDIDATES = 10, 6  # route only to the nearest places by straight line (Delhi has hundreds)
 
 
 @router.post("/help-point")
@@ -95,15 +116,16 @@ def nearest_help_point(req: HelpRequest, db: Session = Depends(get_db)):
     """Nearest place open at the walk time, reached along mapped streets (blueprint §10 "nearest safe spot").
     Places with unknown hours are listed separately and never presented as open."""
     at = parse_at(req.at)
-    streets = db.scalars(select(models.Street)).all()
+    city = cities.resolve(req.city)
+    streets = db.scalars(select(models.Street).where(models.Street.city == city)).all()
     edges = [StreetEdge(s.id, s.start_node, s.end_node, s.length_m, s.geometry) for s in streets]
-    scores = {k: v.score for k, v in score_streets(db, at).items()}
+    scores = {k: v.score for k, v in score_streets(db, at, city).items()}
     reachable, outside = [], []
-    for pa in places_at(db, at):
+    candidates = sorted(((haversine_m(req.lat, req.lon, pa.place.lat, pa.place.lon), pa) for pa in places_at(db, at, city)
+                         if pa.status != "closed"), key=lambda x: x[0])
+    open_first = [c for c in candidates if c[1].status == "open"][:HELP_OPEN_CANDIDATES] + [c for c in candidates if c[1].status != "open"][:HELP_UNKNOWN_CANDIDATES]
+    for straight, pa in open_first:
         p = pa.place
-        if pa.status == "closed":
-            continue
-        straight = haversine_m(req.lat, req.lon, p.lat, p.lon)
         if straight > 5000:
             continue
         try:

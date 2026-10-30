@@ -174,3 +174,13 @@ def test_street_observations_endpoint(client):
         sid = db.scalars(select(models.Street).where(models.Street.osm_way_id == 770001)).one().id
     assert client.get(f"/api/streets/{sid}/observations").json() == {"observations": []}
     assert client.get("/api/streets/99999999/observations").status_code == 404
+
+
+def test_distances_do_not_unlock_invented_minutes():
+    """Regression: 247 m must not allow '7 minutes ago' (only real ages may be split into hours/minutes)."""
+    facts = {"walk": {"id": "W", "distance_m": 247, "duration_min": 3}, "segments": [{"id": "S1", "name": None, "length_m": 127,
+             "score": 47, "latest_photo": None}], "places": []}
+    bad = [{"text": "A rider saw this street 7 minutes ago.", "fact_ids": ["S1"]}] + [{"text": "Your route is 0.2 km.", "fact_ids": ["W"]}] * 3
+    assert any("number 7" in p for p in briefing.check_ai_text(bad, facts, set(), "en"))
+    good = [{"text": "Your route is 0.2 km, about 3 minutes.", "fact_ids": ["W"]}] * 3
+    assert briefing.check_ai_text(good, facts, set(), "en") == []

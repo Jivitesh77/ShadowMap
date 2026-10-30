@@ -1,7 +1,7 @@
-// Choose start + destination, then compare the shortest and the safest route (blueprint §8).
+// Compare the shortest and the safest route (blueprint §8). Start and destination are chosen in PlanBar.
 import type { LatLon, RouteResult, RouteSummary } from '../api'
 import { SAFETY_COLOURS, STATUS_LABEL, categoryMeta, formatAge, formatDistance } from '../lib/mapMeta'
-import { InfoIcon, RouteIcon, XIcon } from './Icons'
+import { InfoIcon, RouteIcon } from './Icons'
 import { BriefingPanel } from './BriefingPanel'
 import { ErrorState, Skeleton } from './States'
 
@@ -10,71 +10,6 @@ export type PickTarget = 'start' | 'end' | 'report' | 'help' | null
 export interface NamedPoint {
   label: string
   point: LatLon
-}
-
-function PointTools({
-  onMine,
-  places,
-  onChoose,
-  busy,
-}: {
-  onMine: () => void
-  places: NamedPoint[]
-  onChoose: (p: LatLon) => void
-  busy: boolean
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      <button onClick={onMine} disabled={busy} className="min-h-10 rounded-lg border border-ink-700 text-xs text-ink-300 hover:bg-ink-800 disabled:opacity-50">
-        {busy ? 'Finding you…' : 'My location'}
-      </button>
-      <select
-        aria-label="Choose a place"
-        value=""
-        onChange={(e) => e.target.value !== '' && onChoose(places[Number(e.target.value)].point)}
-        className="min-h-10 rounded-lg border border-ink-700 bg-ink-900 px-2 text-xs text-ink-300"
-      >
-        <option value="">Choose a place…</option>
-        {places.map((p, i) => (
-          <option key={i} value={i}>{p.label}</option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
-function PointButton({
-  label,
-  letter,
-  value,
-  active,
-  onClick,
-}: {
-  label: string
-  letter: 'A' | 'B'
-  value: LatLon | null
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
-        active ? 'border-beacon-400 bg-beacon-400/10' : 'border-ink-700 bg-ink-900/60 hover:border-ink-600'
-      }`}
-    >
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-beacon-400 bg-white text-xs font-bold text-ink-950">
-        {letter}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-xs text-ink-400">{label}</span>
-        <span className="block truncate text-sm text-ink-100">
-          {active ? 'Tap the map…' : value ? `${value.lat.toFixed(5)}, ${value.lon.toFixed(5)}` : 'Not set — tap to choose'}
-        </span>
-      </span>
-    </button>
-  )
 }
 
 function ColourBar({ r }: { r: RouteSummary }) {
@@ -88,53 +23,52 @@ function ColourBar({ r }: { r: RouteSummary }) {
   )
 }
 
-function Comparison({ route }: { route: RouteResult }) {
-  const rows: [string, (r: RouteSummary) => string][] = [
-    ['Distance', (r) => formatDistance(r.distance_m)],
-    ['Walking time', (r) => `${r.duration_min} min`],
-    ['On red streets', (r) => `${r.red_m} m`],
-    ['Places passed (not closed)', (r) => String(r.places_passed_not_closed)],
-    ['Freshest photo', (r) => formatAge(r.freshest_photo_age_min)],
-  ]
+function RouteCard({ kind, r, same }: { kind: 'safest' | 'shortest'; r: RouteSummary; same?: boolean }) {
+  const safest = kind === 'safest'
+  const title = same ? 'Suggested route (also the shortest)' : safest ? 'Suggested route' : 'Shortest route'
+  const sub = safest ? 'Lowest cost by ShadowMap street scores, within 50% extra length' : 'Fewest metres, scores ignored'
   return (
-    <div className="overflow-hidden rounded-xl border border-ink-700">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-ink-900/70 text-xs text-ink-400">
-            <th className="px-3 py-2 text-left font-medium" />
-            <th className="px-3 py-2 text-right font-medium">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-0 w-4 border-t-2 border-dotted border-ink-100" />
-                Shortest
-              </span>
-            </th>
-            <th className="px-3 py-2 text-right font-medium text-beacon-300">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-1 w-4 rounded-full bg-beacon-400" />
-                Safest
-              </span>
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-ink-700">
-          {rows.map(([label, f]) => (
-            <tr key={label}>
-              <td className="px-3 py-2 text-ink-400">{label}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-ink-100">{f(route.shortest)}</td>
-              <td className="px-3 py-2 text-right font-medium tabular-nums text-ink-100">{f(route.safest)}</td>
-            </tr>
-          ))}
-          <tr>
-            <td className="px-3 py-2 text-ink-400">Street colours</td>
-            <td className="px-3 py-2">
-              <ColourBar r={route.shortest} />
-            </td>
-            <td className="px-3 py-2">
-              <ColourBar r={route.safest} />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div className={`rounded-2xl border p-4 ${safest ? 'border-beacon-400/50 bg-lavender-50' : 'border-ink-700 bg-ink-850'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-semibold text-ink-100">
+            <span className={safest ? 'h-1 w-5 rounded-full bg-beacon-400' : 'h-0 w-5 border-t-2 border-dotted border-ink-400'} aria-hidden="true" />
+            {title}
+          </p>
+          <p className="mt-0.5 text-xs text-ink-400">{sub}</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${safest ? 'bg-beacon-400 text-white' : 'bg-ink-800 text-ink-300'}`}>
+          {safest ? 'Safest by score' : 'Shortest'}
+        </span>
+      </div>
+      <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+        <div><dt className="text-[11px] text-ink-400">Walk</dt><dd className="font-semibold tabular-nums text-ink-100">{r.duration_min} min</dd></div>
+        <div><dt className="text-[11px] text-ink-400">Distance</dt><dd className="font-semibold tabular-nums text-ink-100">{formatDistance(r.distance_m)}</dd></div>
+        <div><dt className="text-[11px] text-ink-400">On red streets</dt><dd className={`font-semibold tabular-nums ${r.red_m > 0 ? 'text-danger' : 'text-ink-100'}`}>{r.red_m} m</dd></div>
+      </dl>
+      <div className="mt-3">
+        <ColourBar r={r} />
+        <p className="mt-1.5 flex flex-wrap justify-between gap-x-3 text-[11px] text-ink-400">
+          <span>{r.places_passed_not_closed} places passed (not closed)</span>
+          <span>{formatAge(r.freshest_photo_age_min)}</span>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function Comparison({ route }: { route: RouteResult }) {
+  return (
+    <div className="space-y-3">
+      <RouteCard kind="safest" r={route.safest} same={route.same_route} />
+      {!route.same_route && <RouteCard kind="shortest" r={route.shortest} />}
+      <p className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-400" aria-label="Street colour key">
+        {(['green', 'yellow', 'red'] as const).map((c) => (
+          <span key={c} className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: SAFETY_COLOURS[c] }} />
+            {c === 'green' ? 'Green 70–100' : c === 'yellow' ? 'Yellow 40–69' : 'Red 0–39'}</span>
+        ))}
+        <span>· bar = share of the route's length</span>
+      </p>
     </div>
   )
 }
@@ -142,67 +76,42 @@ function Comparison({ route }: { route: RouteResult }) {
 export function RoutePanel({
   start,
   end,
-  picking,
-  setPicking,
-  onClear,
   route,
   loading,
   error,
   onRetry,
-  places,
-  onSet,
-  onMine,
-  locating,
   at,
 }: {
   start: LatLon | null
   end: LatLon | null
-  picking: PickTarget
-  setPicking: (p: PickTarget) => void
-  onClear: () => void
   route: RouteResult | null
   loading: boolean
   error: string | null
   onRetry: () => void
-  places: NamedPoint[]
-  onSet: (which: 'start' | 'end', p: LatLon) => void
-  onMine: (which: 'start' | 'end') => void
-  locating: 'start' | 'end' | null
   at?: string
 }) {
   const passed = route?.safest.places_passed ?? []
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-beacon-400">Route</p>
-          <h2 className="mt-0.5 text-lg font-semibold text-ink-100">Shortest vs safest</h2>
-        </div>
-        {(start || end) && (
-          <button onClick={onClear} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-300 hover:bg-ink-700">
-            <XIcon size={16} /> Clear
-          </button>
-        )}
+      <div>
+        <h2 className="text-lg font-semibold text-ink-100">Route options</h2>
+        <p className="text-xs text-ink-400">Suggested route first · scores from ShadowMap street data</p>
       </div>
 
-      <div className="space-y-2">
-        <PointButton label="Start" letter="A" value={start} active={picking === 'start'} onClick={() => setPicking(picking === 'start' ? null : 'start')} />
-        <PointTools onMine={() => onMine('start')} busy={locating === 'start'} places={places} onChoose={(p) => onSet('start', p)} />
-        <PointButton label="Destination" letter="B" value={end} active={picking === 'end'} onClick={() => setPicking(picking === 'end' ? null : 'end')} />
-        <PointTools onMine={() => onMine('end')} busy={locating === 'end'} places={places} onChoose={(p) => onSet('end', p)} />
-      </div>
-
-      {!start && !end && !picking && (
-        <p className="flex gap-2 text-sm text-ink-400">
-          <RouteIcon size={18} className="shrink-0" />
-          Tap the A and B boxes, then tap the map — or use your location or a named place. ShadowMap finds the shortest route and the safest one, on real streets.
+      {!route && !loading && !error && (
+        <p className="flex gap-2 rounded-xl bg-ink-900 p-3 text-sm text-ink-300">
+          <RouteIcon size={18} className="mt-0.5 shrink-0 text-beacon-300" />
+          {start || end
+            ? 'Add the other point above to compare the shortest route with the safest one.'
+            : 'Choose a starting point and a destination above — your location, a tap on the map or a named place. ShadowMap compares the shortest route with the safest one, on real streets.'}
         </p>
       )}
 
       {loading && (
         <div className="space-y-2" role="status">
           <span className="sr-only">Finding routes…</span>
-          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
         </div>
       )}
       {error && !loading && <ErrorState title="Can't plan this route" message={error} onRetry={onRetry} />}
@@ -214,7 +123,7 @@ export function RoutePanel({
           {route.notes.length > 0 && (
             <ul className="space-y-2">
               {route.notes.map((n) => (
-                <li key={n} className="flex gap-2 rounded-lg bg-ink-900/60 p-2.5 text-sm text-ink-300">
+                <li key={n} className="flex gap-2 rounded-lg bg-ink-900 p-2.5 text-sm text-ink-300">
                   <InfoIcon size={16} className="mt-0.5 shrink-0 text-beacon-300" />
                   {n}
                 </li>
@@ -227,7 +136,7 @@ export function RoutePanel({
             </p>
           )}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-400">Places along the safest route (within 50 m)</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-400">Places along the suggested route (within 50 m)</h3>
             {passed.length === 0 ? (
               <p className="mt-1.5 text-sm text-ink-400">None recorded along this route.</p>
             ) : (

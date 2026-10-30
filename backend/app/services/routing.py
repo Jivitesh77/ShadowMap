@@ -14,6 +14,7 @@ from app.services.scoring import safest_cost
 
 START, END = -1, -2  # ids of the temporary nodes for the chosen points
 MAX_SNAP_M = 250  # a point further than this from every mapped street cannot be routed
+MAX_FALLBACK_SNAP_M = 100  # when the nearest path is cut off, the main network may be used only if this close
 # If the blueprint's safest route is more than 50% longer, try gentler safety weightings (still >= length).
 FALLBACK_FACTORS = [2, 1.5, 1, 0.5, 0.25]
 
@@ -159,6 +160,28 @@ class RoutePair:
     safest_within_limit: bool  # False = the blueprint's safest route was too long; a gentler one was used
     start: Snap
     end: Snap
+    main_network_only: bool = False  # True = a point's nearest path was cut off, so the main street network was used
+
+
+def main_network(streets: list[StreetEdge]) -> list[StreetEdge]:
+    """Streets of the largest connected part of the network (by length)."""
+    parent: dict[int, int] = {}
+
+    def find(x: int) -> int:
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for s in streets:
+        parent[find(s.start_node)] = find(s.end_node)
+    size: dict[int, float] = {}
+    for s in streets:
+        size[find(s.start_node)] = size.get(find(s.start_node), 0.0) + s.length_m
+    if not size:
+        return []
+    biggest = max(size, key=size.get)
+    return [s for s in streets if find(s.start_node) == biggest]
 
 
 def plan(streets: list[StreetEdge], scores: dict[int, float], start: tuple[float, float], end: tuple[float, float]) -> RoutePair:
@@ -169,8 +192,21 @@ def plan(streets: list[StreetEdge], scores: dict[int, float], start: tuple[float
     h = with_endpoints(g, s_snap, e_snap)
 
     shortest = dijkstra(h, START, END, lambda e: e.length_m)
+    fallback = shortest is None
     if shortest is None:
-        raise RouteError("not_connected", "No mapped streets connect these two points.")
+        # In dense OSM areas the nearest line is sometimes an isolated path (a park footway, a building corridor).
+        # Try again using only the largest connected street network; the snap distance in the answer shows the shift.
+        main = main_network(streets)
+        try:
+            s_snap, e_snap = snap(main, *start), snap(main, *end)
+        except RouteError:
+            raise RouteError("not_connected", "No mapped streets connect these two points.")
+        if max(s_snap.distance_m, e_snap.distance_m) > MAX_FALLBACK_SNAP_M:
+            raise RouteError("not_connected", "No mapped streets connect these two points.")
+        h = with_endpoints(build_graph(main), s_snap, e_snap)
+        shortest = dijkstra(h, START, END, lambda e: e.length_m) if haversine_m(*s_snap.point, *e_snap.point) >= 5 else None
+        if shortest is None:
+            raise RouteError("not_connected", "No mapped streets connect these two points.")
 
     def weighted(factor: float):
         return lambda e: e.length_m * (1 + factor * (100 - scores.get(e.street_id, 0)) / 100)
@@ -186,7 +222,7 @@ def plan(streets: list[StreetEdge], scores: dict[int, float], start: tuple[float
                 break
         else:
             safest = shortest
-    return RoutePair(shortest, safest, within, s_snap, e_snap)
+    return RoutePair(shortest, safest, within, s_snap, e_snap, fallback)
 
 
 def same_path(a: list[Step], b: list[Step]) -> bool:

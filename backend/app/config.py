@@ -90,3 +90,18 @@ WALK_BATTERY_LOW = 10  # percent: contacts are told (not an alarm)
 WALK_MAX_CONTACTS = 3
 # Access code for the police dashboard (positions are shown there during alerts). Only in backend/.env.
 POLICE_TOKEN = os.getenv("POLICE_TOKEN", "").strip()
+
+# --- M6: photo analysis and privacy ---
+REDACTED_DIR = PHOTO_DIR / "redacted"  # blurred copies; the ONLY images ever served (and only when approved)
+GEMINI_MAX_PER_MINUTE = int(os.getenv("GEMINI_MAX_PER_MINUTE", "10"))  # stay inside the free-tier rate limit
+ANALYSIS_MAX_ATTEMPTS = 5  # then the observation is marked failed and never scored
+# YuNet face detector (OpenCV model zoo, MIT licence). Checked against the official SHA-256 at every load.
+YUNET_MODEL = BACKEND_DIR / "models" / "face_detection_yunet_2023mar.onnx"
+YUNET_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+YUNET_SCORE = 0.5  # lower than OpenCV's default 0.9: for privacy, blurring a non-face is better than missing a face
+# Walk With Me robustness (documented in docs/KNOWN_ISSUES.md; blueprint thresholds unchanged)
+WALK_MAX_ACCURACY_M = 50  # GPS fixes less accurate than this do not move the "stopped"/"off route" clocks
+WALK_MAX_HOURS = 12  # a walk nobody ended stops sharing after this (then normal 24 h deletion)
+WALK_PIN_MAX_FAILURES = 3  # wrong PINs before a short lock-out (stops guessing a 4-digit PIN)
+WALK_PIN_LOCK_S = 30
+WALK_LINK_FINAL_HOURS = 1  # after the end, the link shows only the final status for this long, then expires

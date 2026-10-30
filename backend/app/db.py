@@ -39,6 +39,31 @@ def init_db(bind: Engine = engine) -> None:
 
     Base.metadata.create_all(bind)
     _add_missing_columns(bind)
+    _create_missing_indexes(bind)
+    _label_unlabelled_city_rows(bind)
+    _fill_walk_versions(bind)
+
+
+def _label_unlabelled_city_rows(bind: Engine) -> None:
+    """Rows from before multi-city support belong to the original pilot. Only fills empty labels; changes nothing else."""
+    with bind.begin() as conn:
+        for table in ("streets", "places", "video_jobs", "walks"):
+            conn.execute(text(f"UPDATE {table} SET city = 'guwahati' WHERE city IS NULL"))
+
+
+def _fill_walk_versions(bind: Engine) -> None:
+    """Walks from before optimistic locking get version 1 (a NULL version could never be updated)."""
+    with bind.begin() as conn:
+        conn.execute(text("UPDATE walks SET version = 1 WHERE version IS NULL"))
+
+
+def _create_missing_indexes(bind: Engine) -> None:
+    """create_all makes indexes only for new tables, and _add_missing_columns adds bare columns. Create every index the
+    models declare that the database lacks (CREATE INDEX IF NOT EXISTS: never drops or rewrites anything)."""
+    with bind.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            for index in table.indexes:
+                index.create(conn, checkfirst=True)
 
 
 def _add_missing_columns(bind: Engine) -> None:

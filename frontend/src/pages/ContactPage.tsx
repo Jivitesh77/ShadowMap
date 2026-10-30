@@ -11,13 +11,15 @@ const ago = (iso: string | null) => (iso ? `${Math.max(0, Math.round((Date.now()
 
 function Banner({ v }: { v: ContactView }) {
   if (v.duress)
-    return <div className="rounded-2xl bg-danger p-4 text-white" role="alert"><p className="text-lg font-bold">EMERGENCY: {v.walker_name} entered her duress PIN.</p><p className="text-sm">She may be being forced to cancel. The police dashboard has been alerted (simulated). Call her and the police.</p></div>
+    return <div className="rounded-2xl bg-danger p-4 text-white" role="alert"><p className="text-lg font-bold">EMERGENCY: {v.walker_name} entered the duress PIN.</p><p className="text-sm">The walker may be being forced to cancel. The police dashboard has been alerted (simulated). Call {v.walker_name} and the police.</p></div>
   if (v.status === 'alert')
-    return <div className="rounded-2xl bg-danger p-4 text-white" role="alert"><p className="text-lg font-bold">ALERT: {v.walker_name} has not answered “Are you safe?”</p><p className="text-sm">{v.escalation >= 3 ? 'The police dashboard has been alerted (simulated). ' : ''}Her live location is on the map. Try calling her now.</p></div>
+    return <div className="rounded-2xl bg-danger p-4 text-white" role="alert"><p className="text-lg font-bold">ALERT: {v.walker_name} has not answered “Are you safe?”</p><p className="text-sm">{v.escalation >= 3 ? 'The police dashboard has been alerted (simulated). ' : ''}The live location is on the map. Try calling {v.walker_name} now.</p></div>
   if (v.status === 'checking')
-    return <div className="rounded-2xl bg-caution/20 p-4 ring-1 ring-caution" role="status"><p className="font-semibold">ShadowMap is asking {v.walker_name} “Are you safe?”</p><p className="text-sm text-ink-300">You will be alerted if she does not answer.</p></div>
+    return <div className="rounded-2xl bg-caution/20 p-4 ring-1 ring-caution" role="status"><p className="font-semibold">ShadowMap is asking {v.walker_name} “Are you safe?”</p><p className="text-sm text-ink-300">You will be alerted if there is no answer.</p></div>
   if (v.status === 'arrived')
     return <div className="rounded-2xl bg-safe/15 p-4 ring-1 ring-safe" role="status"><p className="text-lg font-semibold">{v.walker_name} reached safely at {time(v.ended_utc)}.</p><p className="text-sm text-ink-300">Location sharing has stopped.</p></div>
+  if (v.status === 'expired')
+    return <div className="rounded-2xl bg-ink-800 p-4" role="status"><p className="font-semibold">This walk was closed automatically.</p><p className="text-sm text-ink-300">Location sharing has stopped. If you are worried, call {v.walker_name}.</p></div>
   if (v.status === 'ended')
     return <div className="rounded-2xl bg-ink-800 p-4" role="status"><p className="font-semibold">{v.walker_name} ended the walk at {time(v.ended_utc)}.</p><p className="text-sm text-ink-300">Location sharing has stopped.</p></div>
   return <div className="rounded-2xl bg-ink-800 p-4 ring-1 ring-ink-600" role="status"><p className="text-lg font-semibold">{v.walker_name} is walking</p><p className="text-sm text-ink-300">Expected to arrive about {time(v.expected_arrival_utc)}.</p></div>
@@ -55,11 +57,10 @@ export default function ContactPage({ tripId }: { tripId?: string }) {
             </div>
             <aside className="space-y-3 rounded-2xl border border-ink-700 bg-ink-850 p-4">
               {v.last && <p className="text-xs text-ink-400">Last position {ago(v.last_position_utc)}{v.simulated ? ' · simulated for the demo' : ''}{v.battery_pct != null ? ` · battery ${v.battery_pct}%` : ''}</p>}
-              {v.walker_phone && <a href={`tel:${v.walker_phone.replace(/\s/g, '')}`} className="grid min-h-12 place-items-center rounded-xl bg-beacon-400 font-semibold text-ink-950">Call {v.walker_name}</a>}
               <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-400">Timeline</h3>
               <ol className="space-y-2">
                 {[...v.events].reverse().map((e, i) => (
-                  <li key={i} className={`rounded-lg p-2 text-sm ${e.kind.startsWith('alert') || e.kind === 'sos' || e.kind === 'duress' ? 'bg-danger/15 text-ink-100' : 'bg-ink-900/60 text-ink-200'}`}>
+                  <li key={i} className={`rounded-lg p-2 text-sm ${e.kind.startsWith('alert') || e.kind.startsWith('sos') || e.kind.startsWith('duress') ? 'bg-danger/15 text-ink-100' : 'bg-ink-900/60 text-ink-200'}`}>
                     <span className="block text-xs text-ink-400">{time(e.at)}</span>{e.text}
                   </li>
                 ))}

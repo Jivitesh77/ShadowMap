@@ -10,7 +10,7 @@ import { Badge, PageHeader, Panel, Stat } from '../components/Ui'
 const KEY = 'sm-police-code'
 const getCode = () => { try { return localStorage.getItem(KEY) } catch { return null } }
 const setCode = (c: string | null) => { try { if (c) localStorage.setItem(KEY, c); else localStorage.removeItem(KEY) } catch { /* memory only */ } }
-const TRIGGER: Record<string, string> = { stopped: 'Stopped, no answer', off_route: 'Off route, no answer', late: 'Late, no answer', sos: 'SOS pressed', duress: 'DURESS PIN', no_answer: 'No answer' }
+const TRIGGER: Record<string, string> = { stopped: 'Stopped, no answer', off_route: 'Off route, no answer', late: 'Late, no answer', sos: 'SOS pressed', duress: 'DURESS PIN', no_answer: 'No answer', sos_after_end: 'SOS after the walk ended', duress_after_end: 'DURESS PIN after the walk ended' }
 const STATUS: Record<PoliceAlert['status'], string> = { new: 'New', acknowledged: 'Acknowledged', unit_sent: 'Unit sent', resolved: 'Resolved' }
 const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '—')
 
@@ -53,7 +53,7 @@ function AlertDetail({ a, code, onChanged }: { a: PoliceAlert; code: string; onC
       <dl className="grid grid-cols-2 gap-2 text-sm">
         <div><dt className="text-ink-400">Person</dt><dd className="font-semibold">{a.walker_name}</dd></div>
         <div><dt className="text-ink-400">Phone</dt><dd>{a.walker_phone ?? 'not given'}</dd></div>
-        <div><dt className="text-ink-400">Reason</dt><dd className={a.duress || a.trigger === 'sos' ? 'font-bold text-danger' : ''}>{TRIGGER[a.trigger] ?? a.trigger}</dd></div>
+        <div><dt className="text-ink-400">Reason</dt><dd className={a.duress || a.trigger.startsWith('sos') ? 'font-bold text-danger' : ''}>{TRIGGER[a.trigger] ?? a.trigger}</dd></div>
         <div><dt className="text-ink-400">Raised</dt><dd>{time(a.created_utc)}</dd></div>
         <div><dt className="text-ink-400">Walk status</dt><dd>{a.walk_status}</dd></div>
         <div><dt className="text-ink-400">Contacts</dt><dd>{a.contacts.join(', ') || '—'}</dd></div>
@@ -116,7 +116,7 @@ export default function PolicePage() {
                         <span className="font-semibold">{a.walker_name}</span>
                         <Badge tone={a.status === 'resolved' ? 'neutral' : a.status === 'new' ? 'bad' : 'warn'}>{STATUS[a.status]}</Badge>
                       </div>
-                      <p className={`text-sm ${a.duress || a.trigger === 'sos' ? 'font-semibold text-danger' : 'text-ink-300'}`}>{TRIGGER[a.trigger] ?? a.trigger}</p>
+                      <p className={`text-sm ${a.duress || a.trigger.startsWith('sos') ? 'font-semibold text-danger' : 'text-ink-300'}`}>{TRIGGER[a.trigger] ?? a.trigger}</p>
                       <p className="text-xs text-ink-400">{time(a.created_utc)}</p>
                     </button>
                   </li>

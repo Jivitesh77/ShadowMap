@@ -1,0 +1,7 @@
+{
+  "how_to": [
+    "Add ONLY places a ShadowMap team member has checked in person in this Delhi area. Same rules as assets/demo-data/manual_places.json.",
+    "After editing: cd backend && .venv/bin/python -m scripts.build_map --city delhi"
+  ],
+  "places": []
+}

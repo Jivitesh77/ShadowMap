@@ -1,0 +1,9 @@
+{
+  "name": "Aastha Kunj, Delhi",
+  "center": [28.5547447, 77.2574976],
+  "center_source": "OpenStreetMap way 479658972 (Aastha Kunj, East of Kailash), looked up via Nominatim on 2026-10-30",
+  "bbox": { "south": 28.5367, "west": 77.2370, "north": 28.5727, "east": 77.2780 },
+  "bbox_note": "About 4 km x 4 km (2 km each way) around Aastha Kunj Park. Includes Lotus Temple (0.2 km), Sri Sri Radha Parthasarathi Mandir / ISKCON (0.4 km), Kalkaji Mandir (0.6 km), Nehru Place (0.7-0.8 km), Kalkaji and East of Kailash (~0.8 km) — all looked up in OpenStreetMap/Nominatim, not guessed.",
+  "help_radius_m": 4000,
+  "help_radius_note": "Police, hospitals, clinics, pharmacies, petrol pumps and ATMs within 4 km (Delhi is dense; Guwahati uses 8 km)."
+}

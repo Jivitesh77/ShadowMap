@@ -46,47 +46,35 @@ body {
   }
 }
 
-/* ---------- Map (MapLibre) ---------- */
-.maplibregl-map {
+/* ---------- Map ---------- */
+.leaflet-container {
   background: #0b1220;
   font-family: var(--font-sans);
 }
-.maplibregl-ctrl-group {
-  background: var(--color-ink-850) !important;
-  border: 1px solid var(--color-ink-700);
+/* OpenStreetMap tiles, darkened to suit night use (the data and tiles are unchanged). */
+.sm-tiles {
+  filter: invert(1) hue-rotate(185deg) brightness(0.82) contrast(0.92) saturate(0.45);
 }
-.maplibregl-ctrl-group button + button {
-  border-top-color: var(--color-ink-700) !important;
-}
-.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
-  filter: invert(1) brightness(0.9);
-}
-.maplibregl-ctrl-attrib {
+.leaflet-control-attribution {
   background: rgb(7 12 22 / 0.8) !important;
   color: var(--color-ink-300) !important;
 }
-.maplibregl-ctrl-attrib a {
+.leaflet-control-attribution a {
   color: var(--color-beacon-300) !important;
 }
-.maplibregl-ctrl-attrib-button {
-  filter: invert(1);
+.leaflet-bar a {
+  background: var(--color-ink-850) !important;
+  color: var(--color-ink-100) !important;
+  border-color: var(--color-ink-700) !important;
 }
-.sm-tooltip .maplibregl-popup-content {
+.leaflet-tooltip {
   background: var(--color-ink-950);
   color: var(--color-ink-100);
   border: 1px solid var(--color-ink-600);
-  padding: 4px 8px;
-  font-size: 12px;
-  border-radius: 6px;
+  box-shadow: none;
 }
-.sm-tooltip .maplibregl-popup-tip {
+.leaflet-tooltip::before {
   display: none;
-}
-.sm-marker {
-  cursor: pointer;
-  background: none;
-  border: 0;
-  padding: 0;
 }
 
 /* Place markers. Open = bright amber, closed = grey, hours unknown = dark with amber outline. */
@@ -143,4 +131,8 @@ body {
   font-size: 13px;
   border: 3px solid var(--color-beacon-400);
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+}
+.sm-picking,
+.sm-picking .leaflet-interactive {
+  cursor: crosshair !important;
 }

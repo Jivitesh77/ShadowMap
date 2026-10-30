@@ -1,25 +1,23 @@
-// Which map provider draws the background map. Change it without touching code by setting, in frontend/.env:
-//   VITE_MAP_STYLE_URL=<a MapLibre style JSON address>
-//   VITE_MAP_ATTRIBUTION=<the credit line that provider requires>
-// The background map is only a picture. ShadowMap's own streets, scores, places and routes are drawn on top
-// from our database, and routing never depends on the map provider.
+// Background map tiles for the Leaflet map. Default: OpenStreetMap's standard tiles.
+// To use another tile server without code changes, set in frontend/.env:
+//   VITE_TILE_URL=<tile address with {z}/{x}/{y}>
+//   VITE_TILE_ATTRIBUTION=<credit line the provider requires>
+// Tiles are only a picture: streets, scores, places and routes come from ShadowMap's own data,
+// and routing runs in the backend, independent of the map.
+// Never point this at Google tiles: Google content may only be shown on Google's own map.
 
-export interface MapProvider {
+export interface TileProvider {
   name: string
-  styleUrl: string
+  url: string
   attribution: string
 }
 
-const OPENFREEMAP_DARK: MapProvider = {
-  name: 'OpenFreeMap (dark)',
-  styleUrl: 'https://tiles.openfreemap.org/styles/dark',
-  attribution: '', // the OpenFreeMap style carries its own credit line (OpenFreeMap, OpenMapTiles, OpenStreetMap)
+const OSM_STANDARD: TileProvider = {
+  name: 'OpenStreetMap',
+  url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 }
 
-export const mapProvider: MapProvider = import.meta.env.VITE_MAP_STYLE_URL
-  ? {
-      name: 'Custom',
-      styleUrl: import.meta.env.VITE_MAP_STYLE_URL,
-      attribution: import.meta.env.VITE_MAP_ATTRIBUTION ?? '',
-    }
-  : OPENFREEMAP_DARK
+export const tileProvider: TileProvider = import.meta.env.VITE_TILE_URL
+  ? { name: 'Custom', url: import.meta.env.VITE_TILE_URL, attribution: import.meta.env.VITE_TILE_ATTRIBUTION ?? '' }
+  : OSM_STANDARD

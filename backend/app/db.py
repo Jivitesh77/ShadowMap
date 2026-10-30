@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app import config
@@ -38,6 +38,21 @@ def init_db(bind: Engine = engine) -> None:
     from app import models  # noqa: F401  (registers the tables)
 
     Base.metadata.create_all(bind)
+    _add_missing_columns(bind)
+
+
+def _add_missing_columns(bind: Engine) -> None:
+    """Small safe upgrade: add columns that newer code expects to existing tables. Never drops or changes data.
+    New columns must therefore allow empty values (nullable)."""
+    insp = inspect(bind)
+    with bind.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in existing:
+                    if not col.nullable:
+                        raise RuntimeError(f"Column {table.name}.{col.name} must be nullable to be added automatically.")
+                    conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(bind.dialect)}'))
 
 
 def get_db() -> Iterator[Session]:

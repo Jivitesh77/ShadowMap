@@ -4,7 +4,7 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-30 — M0–M4 done; back on Leaflet + OSM; multi-source places done (verified). Demo area: campus. Next: M5 (Sentinel capture).
+Last updated: 2026-10-30 — M0–M5 + M7 built and verified with generated test clips; real night videos still to be tested. Next: M6 (Gemini analysis).
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
@@ -13,9 +13,9 @@ Last updated: 2026-10-30 — M0–M4 done; back on Leaflet + OSM; multi-source p
 | M2 | "Open now" + demo clock | P1 | 2 h | Done (verified) | Hours reader with 8 tests; walk-time picker (Now / Tonight 11:30 pm / any time); open/closed/unknown + basis shown |
 | M3 | Safety score + street colours | P1 | 1.5 h | Done (verified) | Full §7 formula incl. photo score, freshness, reports, clamp; 11 scoring tests |
 | M4 | Route finder (shortest vs safest) | P1 | 3 h | Done (verified) | Dijkstra both costs, 50% limit, comparison card; 10 routing + 1 API test; real routes on campus |
-| M5 | Sentinel capture page | P1 | 3 h | Not started | |
+| M5 | Sentinel capture page (live) | P1 | 3 h | Done (verified) | Camera/GPS/rules/resize/upload/duplicates/status; tested with fake camera + simulated GPS and in pytest. Real phone over https: M12 |
 | M6 | AI analysis, live colours, blur, deletion | P1 | 4 h | Not started | Needs Gemini key |
-| M7 | Video mode | P1 | 2.5 h | Not started | Real night videos may arrive only after building; verify in the testing phase |
+| M7 | Video mode | P1 | 2.5 h | Built — real-data check pending | Full pipeline verified on a generated 120 s test clip; assets/videos was empty, so the owner's footage is untested |
 | M8 | AI route briefing + voice | P1 | 2 h | Not started | Needs Gemini key |
 | M9 | Community reports + nearest safe spot | P1 | 2 h | Not started | |
 | M10 | Walk With Me + escalation + help bar | P1 | 5 h | Not started | Needs team member's demo phone number |
@@ -127,3 +127,21 @@ Checks run:
 - Live (owner's app): 26 of 27 places "unknown", 1 open from listed 24/7; police and hospital "unknown", confidence medium with reason; no "safe" in place data; Google status `configured: false`, search → 503 not_configured; route still 1250 m.
 - Browser (desktop + phone): Leaflet + OSM tiles; no Google content on the page; 27 markers; zoom and pan; police panel shows sources, confidence + reason, "Never checked in person", OSM last-edited date; Google section says "not set up"; route card shows "Places passed (not closed)".
 Not done: a live call to Google (no key).
+
+### 2026-10-30 — M5 Live Sentinel + M7 Video mode (built and verified with generated clips; real footage pending)
+`assets/videos/` was **empty**, so the owner's footage could not be tested. Everything was tested with FFmpeg-generated test-pattern clips (never used as demo data).
+
+Built:
+- Backend: `services/video.py` (ffprobe validation: allowed formats, readable, has a picture, length ≤ 2 h; reports a single location tag or recording time only if the file has them; frame extraction at 640 px), `services/video_jobs.py` (background worker thread, one job at a time, progress saved per frame, restart-safe), `routing.trace` (path along mapped streets through user-clicked points), `routers/sentinel.py` (live photo upload; asset video list/check; upload with size limit; trace preview; job create/list/detail/remove; status). New table `video_jobs`; observation fields `position_source`, `video_job_id`, `frame_time_s`, `device_id`, `analysis_error`; `init_db` now adds missing columns safely (never drops).
+- Frame positions: only from the traced route, steady speed between ride start/end (optional trims). Every video observation has `position_source = traced_route` and no GPS accuracy; the screen says "not GPS readings".
+- Recording time: entered by the user (India time), or the video's own stored time if present (with a warning). Never invented: a video without a stored time cannot use "video time".
+- Live mode: camera + GPS permissions with plain-language errors, photo every 5–10 s, only while moving (>5 km/h) and 6 pm–6 am (both can be switched off for testing), ≥30 m between photos, GPS accuracy ≤50 m, 640 px JPEG, upload queue with retries, counts and recent log, screen kept awake where supported. Server re-checks: JPEG only, accuracy, within 25 m of a street, duplicate within 30 m.
+- Photos wait with `analysis_status = pending` until Gemini (M6).
+
+Checks run:
+- `pytest`: 54 passed (Sentinel: probe/frame times/broken, renamed, audio-only and unsupported files; end-to-end job → 6 frames at 2.5…27.5 s, correct times (IST→UTC), positions moving along the route at steady speed, files written, rerun does not duplicate, remove keeps the asset video; job errors: future time, no time, no stored video time, point too far, path traversal, unsupported/broken uploads not kept, original upload name kept; live rules: saved, duplicate, inaccurate, off-street, not JPEG).
+- Live on the owner's server with a generated 120 s clip: upload checked (no GPS, no stored time — reported honestly); `.py` file → 415; job over a real campus→NH17 route (1.25 km): 24 frames on 7 streets in 6.1 s; 30 health checks during processing, max 9 ms (app stayed responsive). Test job then removed (24 observations, frames and upload deleted; database back to 0 observations).
+- Browser (fake camera + simulated GPS, desktop + phone): video tab (empty-assets message, trace map, job card with progress/position note), live tab (camera plays, GPS shown, photo captured and uploaded, server refusal shown with its reason, refused location permission shows a clear message), no JS errors, no sideways scrolling.
+
+Fixed during testing: error messages with a code were shown as "Server error (422)" (also affected route errors); uploaded videos showed an internal file name; trace map tiles not darkened.
+Still to do: run the owner's real night videos (testing phase); live mode on a real phone over https (M12).

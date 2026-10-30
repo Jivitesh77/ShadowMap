@@ -12,12 +12,17 @@ from app.db import get_db, init_db, utcnow
 from app.routers import map as map_router
 from app.routers import google_places as google_router
 from app.routers import route as route_router
+from app.routers import sentinel as sentinel_router
+from app.services.video_jobs import worker as video_worker
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()  # creates any missing tables
+    if config.START_WORKERS:
+        video_worker.start()  # background queue for night-ride videos
     yield
+    video_worker.stop()
 
 
 app = FastAPI(title="ShadowMap API", lifespan=lifespan)
@@ -30,6 +35,7 @@ app.add_middleware(
 app.include_router(map_router.router)
 app.include_router(route_router.router)
 app.include_router(google_router.router)
+app.include_router(sentinel_router.router)
 
 
 @app.get("/")

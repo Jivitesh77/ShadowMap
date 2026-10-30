@@ -193,3 +193,48 @@ def same_path(a: list[Step], b: list[Step]) -> bool:
     return [(s.edge.street_id, s.forward, round(s.edge.length_m, 1)) for s in a] == [
         (s.edge.street_id, s.forward, round(s.edge.length_m, 1)) for s in b
     ]
+
+
+@dataclass
+class TracedRoute:
+    steps: list[Step]
+    geometry: list[list[float]]
+    length_m: float
+
+
+def trace(streets: list[StreetEdge], waypoints: list[tuple[float, float]]) -> TracedRoute:
+    """Path along mapped streets through the user's points, in order (shortest path between each pair).
+    Used for video mode: the user traces the ride, frames are placed along it."""
+    if len(waypoints) < 2:
+        raise RouteError("too_few_points", "Trace the ride with at least a start and an end point.")
+    g = build_graph(streets)
+    steps: list[Step] = []
+    for a, b in zip(waypoints, waypoints[1:]):
+        sa, sb = snap(streets, *a), snap(streets, *b)
+        if haversine_m(*sa.point, *sb.point) < 5:
+            continue  # two clicks on the same spot
+        part = dijkstra(with_endpoints(g, sa, sb), START, END, lambda e: e.length_m)
+        if part is None:
+            raise RouteError("not_connected", "Two of the traced points are not connected by mapped streets.")
+        steps.extend(part)
+    if not steps:
+        raise RouteError("too_few_points", "The traced points are all in the same place.")
+    geometry: list[list[float]] = []
+    for st in steps:
+        g2 = st.geometry
+        geometry.extend(g2[1:] if geometry and geometry[-1] == g2[0] else g2)
+    return TracedRoute(steps, geometry, path_length(steps))
+
+
+def point_along(route: TracedRoute, along_m: float) -> tuple[list[float], int]:
+    """Position and street id at `along_m` metres along a traced route."""
+    along_m = min(max(along_m, 0.0), route.length_m)
+    done = 0.0
+    for st in route.steps:
+        if done + st.edge.length_m >= along_m or st is route.steps[-1]:
+            local = min(max(along_m - done, 0.0), st.edge.length_m)
+            geom = st.geometry
+            point = cut_line(geom, 0, local)[-1] if local > 0 else list(geom[0])
+            return point, st.edge.street_id
+        done += st.edge.length_m
+    raise ValueError("empty route")

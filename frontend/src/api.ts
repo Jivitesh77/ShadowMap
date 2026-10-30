@@ -169,16 +169,66 @@ export interface GoogleNearby {
   notes: string[]
 }
 
+// ---- Sentinel ----
+export interface VideoInfo {
+  duration_s: number
+  codec: string | null
+  width: number | null
+  height: number | null
+  rotation: number | string | null
+  size_bytes: number
+  format: string | null
+  location_tag: string | null
+  creation_time_utc: string | null
+}
+
+export interface CheckedVideo {
+  video_ref: string
+  name: string
+  info: VideoInfo
+}
+
+export interface VideoJob {
+  id: number
+  original_name: string
+  source_kind: 'upload' | 'asset'
+  sentinel_label: string
+  status: 'queued' | 'processing' | 'done' | 'failed'
+  stage: string | null
+  frames_total: number | null
+  frames_done: number
+  duration_s: number | null
+  frame_interval_s: number
+  recorded_at_utc: string | null
+  recorded_at_source: 'user' | 'video_metadata' | null
+  route_geometry: [number, number][] | null
+  route_length_m: number | null
+  position_note: string
+  streets_covered: { street_id: number; name: string; frames: number }[]
+  analysis: Record<string, number>
+  error: string | null
+  created_at_utc: string
+}
+
+export interface LivePhotoResult {
+  observation_id: number
+  street_id: number
+  street_name: string
+  snap_distance_m: number
+  analysis_status: string
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
     public status?: number,
+    public code?: string,
   ) {
     super(message)
   }
 }
 
-async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000, isForm = false): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let res: Response
@@ -186,7 +236,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000): 
     res = await fetch(path, {
       ...init,
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      headers: isForm ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
     })
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw new ApiError('The server took too long to answer.')
@@ -196,11 +246,13 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000): 
   }
   if (!res.ok) {
     let detail = `Server error (${res.status}).`
+    let code: string | undefined
     try {
       const body = await res.json()
       if (typeof body?.detail === 'string') detail = body.detail
       else if (typeof body?.detail?.message === 'string') detail = body.detail.message
       else if (Array.isArray(body?.detail)) detail = 'The request was not valid.'
+      if (typeof body?.detail?.code === 'string') code = body.detail.code
     } catch {
       /* body was not JSON */
     }
@@ -208,9 +260,37 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000): 
     if ([500, 502, 504].includes(res.status) && detail.startsWith('Server error')) {
       detail = 'Cannot reach the ShadowMap server. Check that the backend is running.'
     }
-    throw new ApiError(detail, res.status)
+    throw new ApiError(detail, res.status, code)
   }
   return res.json() as Promise<T>
+}
+
+/** Sends a form (files + fields). The browser sets the right content type itself. */
+async function requestForm<T>(path: string, form: FormData, timeoutMs = 30000): Promise<T> {
+  return request<T>(path, { method: 'POST', body: form, headers: {} }, timeoutMs, true)
+}
+
+/** Uploads a video with a progress callback (0..1). fetch() cannot report upload progress, so this uses XHR. */
+function uploadVideo(file: File, onProgress: (f: number) => void): Promise<CheckedVideo> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/sentinel/videos/uploads')
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    xhr.onload = () => {
+      let body: any = null
+      try {
+        body = JSON.parse(xhr.responseText)
+      } catch {
+        /* not JSON */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body)
+      else reject(new ApiError(body?.detail?.message ?? `Upload failed (${xhr.status}).`, xhr.status, body?.detail?.code))
+    }
+    xhr.onerror = () => reject(new ApiError('Upload failed: cannot reach the ShadowMap server.'))
+    const form = new FormData()
+    form.append('file', file)
+    xhr.send(form)
+  })
 }
 
 export const api = {
@@ -222,6 +302,32 @@ export const api = {
   googleStatus: () => request<{ configured: boolean; attribution: string }>('/api/google-places/status'),
   googleNearby: (lat: number, lon: number, radius_m: number) =>
     request<GoogleNearby>('/api/google-places/nearby', { method: 'POST', body: JSON.stringify({ lat, lon, radius_m }) }, 15000),
+  sentinelStatus: () =>
+    request<{ observations_by_analysis: Record<string, number>; ai_configured: boolean; ai_note: string | null }>('/api/sentinel/status'),
+  livePhoto: (form: FormData) => requestForm<LivePhotoResult>('/api/sentinel/photo', form, 20000),
+  assetVideos: () =>
+    request<{ folder: string; videos: { name: string; size_bytes: number; supported: boolean }[] }>('/api/sentinel/videos/assets'),
+  checkAssetVideo: (name: string) => request<CheckedVideo>(`/api/sentinel/videos/assets/${encodeURIComponent(name)}`, undefined, 60000),
+  uploadVideo,
+  traceRoute: (waypoints: [number, number][]) =>
+    request<{ geometry: [number, number][]; length_m: number; streets: number }>('/api/sentinel/trace', {
+      method: 'POST',
+      body: JSON.stringify({ waypoints }),
+    }),
+  createVideoJob: (body: {
+    video_ref: string
+    sentinel_label: string
+    waypoints: [number, number][]
+    recorded_at_ist?: string
+    use_video_time?: boolean
+    ride_start_s?: number | null
+    ride_end_s?: number | null
+    frame_interval_s?: number
+  }) => request<VideoJob>('/api/sentinel/videos/jobs', { method: 'POST', body: JSON.stringify(body) }, 60000),
+  videoJobs: () => request<{ jobs: VideoJob[] }>('/api/sentinel/videos/jobs'),
+  videoJob: (id: number) => request<VideoJob>(`/api/sentinel/videos/jobs/${id}`),
+  deleteVideoJob: (id: number) =>
+    request<{ deleted_job: number; observations_removed: number }>(`/api/sentinel/videos/jobs/${id}`, { method: 'DELETE' }),
   street: (id: number, at?: string) =>
     request<StreetDetail>(`/api/streets/${id}${at ? `?at=${encodeURIComponent(at)}` : ''}`),
 }

@@ -88,6 +88,14 @@ class Observation(Base):
     confidence: Mapped[str | None] = mapped_column(String(10))  # low / medium / high
     photo_score: Mapped[float | None] = mapped_column(Float)
 
+    # How the position was obtained: "gps" (live phone GPS) or "traced_route" (video: estimated along the route the
+    # user traced, assuming steady speed). Never claimed as GPS when it is not.
+    position_source: Mapped[str | None] = mapped_column(String(20))
+    video_job_id: Mapped[int | None] = mapped_column(ForeignKey("video_jobs.id"), index=True)
+    frame_time_s: Mapped[float | None] = mapped_column(Float)  # second in the video the frame was taken from
+    device_id: Mapped[str | None] = mapped_column(String(64))  # anonymous live-Sentinel device id
+    analysis_error: Mapped[str | None] = mapped_column(String(300))
+
     photo_path: Mapped[str | None] = mapped_column(String(300))  # cleared when the photo is deleted
     photo_delete_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -166,3 +174,33 @@ class Alert(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     walk: Mapped[Walk] = relationship(back_populates="alerts")
+
+
+class VideoJob(Base):
+    """A night-ride video turned into street observations (blueprint §5 video mode). Processed in the background."""
+
+    __tablename__ = "video_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    original_name: Mapped[str] = mapped_column(String(300))
+    source_kind: Mapped[str] = mapped_column(String(10))  # "upload" or "asset" (file already in assets/videos)
+    file_path: Mapped[str] = mapped_column(String(500))  # uploads: our copy in data/videos; assets: read in place
+    sentinel_label: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(20), default="queued")  # queued / processing / done / failed
+    stage: Mapped[str | None] = mapped_column(String(40))
+    frames_total: Mapped[int | None] = mapped_column(Integer)
+    frames_done: Mapped[int | None] = mapped_column(Integer, default=0)
+    frames_on_streets: Mapped[int | None] = mapped_column(Integer, default=0)
+    duration_s: Mapped[float | None] = mapped_column(Float)
+    frame_interval_s: Mapped[float | None] = mapped_column(Float)
+    ride_start_s: Mapped[float | None] = mapped_column(Float)  # part of the video that is the ride
+    ride_end_s: Mapped[float | None] = mapped_column(Float)
+    recorded_at: Mapped[datetime | None] = mapped_column(DateTime)  # UTC time at video second 0
+    recorded_at_source: Mapped[str | None] = mapped_column(String(20))  # "user" or "video_metadata"
+    route_waypoints: Mapped[list | None] = mapped_column(JSON)  # [[lat, lon], ...] clicked by the user
+    route_geometry: Mapped[list | None] = mapped_column(JSON)  # path along mapped streets through the waypoints
+    route_length_m: Mapped[float | None] = mapped_column(Float)
+    video_info: Mapped[dict | None] = mapped_column(JSON)  # codec, size, rotation, GPS tag found or not
+    error: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)

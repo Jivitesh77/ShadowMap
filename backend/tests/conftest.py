@@ -8,6 +8,7 @@ import pytest
 
 _TMP = Path(tempfile.mkdtemp(prefix="shadowmap-test-"))
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'test.db'}"  # must be set before the app is imported
+os.environ["START_WORKERS"] = "0"  # tests run video jobs directly instead of in the background
 
 
 @pytest.fixture

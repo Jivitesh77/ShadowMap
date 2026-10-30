@@ -53,3 +53,12 @@ SAFE_PLACE_PASSED_M = 50  # a place counts as "passed" within 50 m of the route
 # Key only in backend/.env, never in frontend code. Empty = feature off; the app works fully without it.
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "").strip()
 GOOGLE_PLACES_MAX_PER_HOUR = int(os.getenv("GOOGLE_PLACES_MAX_PER_HOUR", "30"))  # protects the billing account
+
+# --- Sentinel photos and videos ---
+PHOTO_DIR = BACKEND_DIR / "data" / "photos"  # all Sentinel images (git-ignored; deleted after PHOTO_KEEP_HOURS)
+VIDEO_DIR = BACKEND_DIR / "data" / "videos"  # uploaded videos (assets/videos is only read, never changed)
+ASSET_VIDEO_DIR = BACKEND_DIR.parent / "assets" / "videos"
+START_WORKERS = _bool("START_WORKERS", True)  # background video queue; tests turn it off and run jobs directly
+LIVE_MAX_GPS_ACCURACY_M = 50  # ignore readings with poorer accuracy (blueprint §20)
+LIVE_DUPLICATE_RADIUS_M = 30  # blueprint §5: no new photo within ~30 m of the last one
+LIVE_MAX_IMAGE_BYTES = 1_500_000

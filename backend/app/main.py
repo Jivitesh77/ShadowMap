@@ -1,0 +1,64 @@
+"""ShadowMap backend server. Start with: uvicorn app.main:app --reload --port 8000"""
+
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
+
+from app import config, models
+from app.db import get_db, init_db, utcnow
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()  # creates any missing tables
+    yield
+
+
+app = FastAPI(title="ShadowMap API", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/api/health")
+def health(db: Session = Depends(get_db)):
+    """Is the server up and can it reach the database? Never returns secret values."""
+    try:
+        db.execute(text("SELECT 1"))
+        database = "ok"
+    except Exception:
+        database = "error"
+    return {
+        "status": "ok" if database == "ok" else "degraded",
+        "database": database,
+        "demo_mode": config.DEMO_MODE,
+        "gemini_configured": bool(config.GEMINI_API_KEY),
+        "server_time_utc": utcnow().isoformat() + "Z",
+    }
+
+
+@app.get("/api/summary")
+def summary(db: Session = Depends(get_db)):
+    """Real row counts per table. Screens use this to show honest empty states."""
+    tables = {
+        "streets": models.Street,
+        "places": models.Place,
+        "observations": models.Observation,
+        "reports": models.Report,
+        "walks": models.Walk,
+        "alerts": models.Alert,
+    }
+    counts = {name: db.scalar(select(func.count()).select_from(model)) for name, model in tables.items()}
+    counts["active_walks"] = db.scalar(
+        select(func.count()).select_from(models.Walk).where(models.Walk.status.in_(["active", "checking", "alert"]))
+    )
+    counts["open_alerts"] = db.scalar(
+        select(func.count()).select_from(models.Alert).where(models.Alert.status != "resolved")
+    )
+    return counts

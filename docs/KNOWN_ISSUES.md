@@ -1,0 +1,25 @@
+# ShadowMap — Known Issues, Risks and Open Questions
+
+Anything broken, uncertain, simulated or waiting on a decision goes here immediately. Never hide a problem; the testing phase reviews every item.
+
+Status values: Open · Workaround · Resolved · Accepted (stays for the demo, explained honestly)
+
+| # | Issue | Impact | Status | Plan / workaround |
+| --- | --- | --- | --- | --- |
+| 1 | **No Gemini API key yet.** | Blocks M6 (photo analysis) and M8 (briefing). | Open | Owner creates a free key at Google AI Studio and pastes it into `backend/.env` (never into chat or code). M0–M5 can be built without it. |
+| 2 | **Demo area not yet confirmed.** Blueprint §24 lists it as an open decision. Exact coordinates of IIIT Guwahati must come from OpenStreetMap, not from memory. | Blocks M1 and everything after it. | Open | At M1, look up IIIT Guwahati in OpenStreetMap, propose a ~2 km × 2 km box, owner confirms. Also need the demo walk's start and destination. |
+| 3 | **OpenStreetMap data near IIIT Guwahati may be thin** (semi-rural area: few places, missing opening hours). | Few safe places; many "hours unknown"; map scores may look similar everywhere. | Open | Measure at M1. Missing places may be added **only** from real field checks by the field lead (recorded with source and date), never invented. |
+| 4 | **Phones need https** for camera and GPS. Localhost works only on the laptop itself. | Blocks Sentinel on phones and judges' QR reports. | Open | Options for M12, owner chooses: (a) a temporary https tunnel to the laptop, (b) hosting as in blueprint §18. Both publish the app, so **nothing is done without owner approval**. |
+| 5 | **`BUILD_PLAN.md` referenced but missing.** | None. | Resolved | Owner (2026-10-30): ignore it; follow IMPLEMENTATION_PLAN.md. |
+| 6 | **Python 3.14 is very new.** Some packages (especially OpenCV for blurring) may not yet offer ready-made builds for it. | Install could fail at M6. | Open | M0 packages installed fine on 3.14. OpenCV + google-genai still to check at M6. Fallback: `uv` (already installed) can create the project environment with Python 3.12 without touching the system Python. |
+| 7 | **Gemini free-tier limits** (requests per minute/day). | Live photos may be refused during heavy use. | Open | One Sentinel at a time in the demo; queue + retry; night-ride photos analysed in advance and stored. Current limits and model name verified at M6. |
+| 8 | **Blurring is approximate.** OpenCV Haar cascades miss some faces and many Indian number plates, especially at night. | Privacy claim must be honest. | Open | Test on real night photos at M6; record the miss rate here. Say "best-effort blur in the prototype; on-phone blur in production". |
+| 9 | **Police dashboard and partner fleets are simulated** (blueprint §15). | Must be stated openly. | Accepted | Labels on screen: "Simulated — no connection to real police". Sentinels named like partner riders. |
+| 10 | **No real SMS/WhatsApp.** Contact alerts appear only on the contact's trip page. | Contact must have the page open. | Accepted | Per blueprint §15. |
+| 11 | **Demo mode never calls real emergency numbers.** | Needs a team member's phone number to ring instead. | Open | Owner provides the number at M10; stored in `backend/.env`, not in code. |
+| 12 | **Large videos and git.** GitHub refuses files over 100 MB. | Pushing `assets/videos/` could fail later. | Open | Decide with owner before the first push (keep videos out of git, or use Git LFS). |
+| 13 | **No demo data yet.** `assets/videos`, `assets/images`, `assets/demo-data` are empty. | Video mode (M7) and the coloured demo map need real night footage/photos. | Open | Team records night videos tonight (2026-10-30). Put them in `assets/videos/`. |
+| 14 | **OpenStreetMap tile usage policy.** Public OSM tiles must show attribution and must not be used heavily. | Fine for a demo; tiles need internet. | Accepted | Show "© OpenStreetMap contributors". For an offline backup, use the recorded demo video. |
+| 15 | **Test warning:** starlette says its test client wants `httpx2` instead of `httpx`. Installing `httpx2` was blocked by the safety check (new package from outside). | None: tests pass; it is only a warning. | Accepted | Revisit only if a future update breaks the tests. |
+| 16 | **No database migrations.** Tables are created at start-up; changing a column later does not update an existing database file. | Early on, a model change needs a fresh DB. | Accepted | Before M12 the DB only holds re-creatable data; ask the owner before deleting `backend/data/shadowmap.db`. |
+| 17 | **TypeScript 7.0 is new** (first major release of the faster compiler). | Possible tool quirks. | Workaround | Type-check and build pass. If problems appear, pin TypeScript 5.x. |

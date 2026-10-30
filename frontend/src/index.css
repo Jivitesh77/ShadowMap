@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* ShadowMap design tokens. Night-first palette: deep navy surfaces, streetlight amber accent.
+   Green / yellow / red are reserved for street safety scores and must not be used decoratively. */
+@theme {
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+
+  --color-ink-950: #070c16;
+  --color-ink-900: #0b1220;
+  --color-ink-850: #0f1829;
+  --color-ink-800: #142034;
+  --color-ink-700: #1e2d47;
+  --color-ink-600: #2c3d5c;
+  --color-ink-400: #7f8fab;
+  --color-ink-300: #a8b4c9;
+  --color-ink-100: #e6ebf3;
+
+  --color-beacon-300: #ffd27a;
+  --color-beacon-400: #f5b83d;
+  --color-beacon-500: #e09a14;
+
+  --color-safe: #22c55e;
+  --color-caution: #eab308;
+  --color-danger: #ef4444;
+  --color-alert: #f43f5e;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-900 text-ink-100 antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-beacon-400;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

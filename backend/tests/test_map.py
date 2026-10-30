@@ -56,7 +56,7 @@ def test_map_endpoint_returns_streets_places_and_status():
         assert client.get("/api/streets/999999").status_code == 404
 
 
-def test_manual_places_need_verifier_and_date(tmp_path, monkeypatch):
+def test_verified_places_need_verifier_and_date(tmp_path, monkeypatch):
     import json
 
     import pytest
@@ -68,12 +68,12 @@ def test_manual_places_need_verifier_and_date(tmp_path, monkeypatch):
     entry = {"name": "Checked Pharmacy", "category": "pharmacy", "lat": 26.08, "lon": 91.56,
              "opening_hours": "Mo-Su 08:00-22:00", "verified_by": "Field lead", "verified_on": "2026-10-31", "note": "On site"}
     (tmp_path / "manual_places.json").write_text(json.dumps({"places": [entry]}))
-    [p] = bm.build_manual_places(bbox)
-    assert (p.source, p.verified_by, p.in_demo_area, p.osm_id) == ("manual", "Field lead", True, None)
+    [v] = bm.load_verified_places(bbox)
+    assert v["in_demo_area"] is True and v["verified_by"] == "Field lead"
 
     (tmp_path / "manual_places.json").write_text(json.dumps({"places": [{**entry, "verified_by": ""}]}))
     with pytest.raises(SystemExit):
-        bm.build_manual_places(bbox)
+        bm.load_verified_places(bbox)
     (tmp_path / "manual_places.json").write_text(json.dumps({"places": [{**entry, "category": "temple"}]}))
     with pytest.raises(SystemExit):
-        bm.build_manual_places(bbox)
+        bm.load_verified_places(bbox)

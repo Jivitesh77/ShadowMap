@@ -41,13 +41,19 @@ class Place(Base):
     category: Mapped[str] = mapped_column(String(50), index=True)
     lat: Mapped[float] = mapped_column(Float)
     lon: Mapped[float] = mapped_column(Float)
-    opening_hours: Mapped[str | None] = mapped_column(String(300))  # raw OSM text
+    opening_hours: Mapped[str | None] = mapped_column(String(300))  # raw OSM-style text
+    hours_source: Mapped[str | None] = mapped_column(String(20))  # osm / shadowmap: who gave the hours
     phone: Mapped[str | None] = mapped_column(String(50))
-    source: Mapped[str] = mapped_column(String(50), default="openstreetmap")  # openstreetmap / manual
+    # Where this place comes from: ["osm"], ["shadowmap"] or ["osm", "shadowmap"] when both describe the same place.
+    # Google Places content is never stored here (Google terms); only ShadowMap and OpenStreetMap data.
+    sources: Mapped[list] = mapped_column(JSON, default=list)
     in_demo_area: Mapped[bool] = mapped_column(Boolean, default=True)  # False = nearby help outside the 2x2 km box
-    verified_by: Mapped[str | None] = mapped_column(String(80))  # manual places only
-    verified_on: Mapped[str | None] = mapped_column(String(20))  # manual places only, YYYY-MM-DD
-    note: Mapped[str | None] = mapped_column(String(300))  # manual places only: how it was checked
+    osm_last_edited: Mapped[str | None] = mapped_column(String(30))  # when the OSM entry was last edited (not verified)
+    duplicate_osm_ids: Mapped[list | None] = mapped_column(JSON)  # other OSM entries merged into this one
+    verified_by: Mapped[str | None] = mapped_column(String(80))  # ShadowMap team check in person
+    verified_on: Mapped[str | None] = mapped_column(String(20))  # YYYY-MM-DD
+    note: Mapped[str | None] = mapped_column(String(300))  # how it was checked
+    match_note: Mapped[str | None] = mapped_column(String(200))  # why OSM and ShadowMap entries were treated as one place
     last_seen_open_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 

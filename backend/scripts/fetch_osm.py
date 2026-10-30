@@ -32,19 +32,25 @@ def build_query(area: dict) -> str:
   nwr["amenity"]({bbox});
   nwr["shop"]({bbox});
   nwr["tourism"]({bbox});
+  nwr["healthcare"]({bbox});
+  nwr["emergency"]({bbox});
   node["highway"="bus_stop"]({bbox});
+  nwr["public_transport"~"^(platform|station|stop_position)$"]({bbox});
   nwr["railway"~"^(station|halt)$"]({bbox});
-  nwr["amenity"~"^(police|hospital|clinic|doctors|pharmacy|fuel|atm)$"](around:{r},{lat},{lon});
+  nwr["amenity"~"^(police|hospital|clinic|doctors|pharmacy|fuel|atm|bank|bus_station)$"](around:{r},{lat},{lon});
+  nwr["healthcare"~"^(hospital|clinic|doctor|pharmacy|centre)$"](around:{r},{lat},{lon});
   nwr["shop"="chemist"](around:{r},{lat},{lon});
+  nwr["shop"]["opening_hours"="24/7"](around:{r},{lat},{lon});
+  nwr["railway"~"^(station|halt)$"](around:{r},{lat},{lon});
 )->.places;
 .roads out body geom;
-.places out tags center;
+.places out tags center meta;
 """
 
 
 def main() -> int:
     area = json.loads((DEMO_DATA / "area.json").read_text())
-    out = DEMO_DATA / f"osm_{datetime.now().strftime('%Y-%m-%d')}.json"
+    out = DEMO_DATA / f"osm_{datetime.now().strftime('%Y-%m-%dT%H%M')}.json"
     if out.exists():
         print(f"{out.name} already exists. Not downloading again (delete it yourself if you really want a fresh copy).")
         return 1

@@ -17,6 +17,7 @@ from app import models
 from app.db import engine, init_db
 from app.services.geo import haversine_m, line_length_m
 from app.services.osm import CATEGORIES, WALKABLE, place_category, road_class
+from app.services.places import Candidate, best_match, kinds_conflict, same_name
 
 DEMO_DATA = Path(__file__).resolve().parents[2] / "assets" / "demo-data"
 
@@ -80,8 +81,14 @@ def build_streets(elements: list[dict], bbox: dict) -> list[models.Street]:
     return streets
 
 
+def _richness(tags: dict) -> int:
+    return len(tags) + (5 if tags.get("name") else 0)
+
+
 def build_osm_places(elements: list[dict], bbox: dict) -> list[models.Place]:
-    places, seen = [], set()
+    """OSM places, with OSM's own duplicates merged (e.g. a hospital mapped as both a point and a building)."""
+    raw = []
+    seen = set()
     for e in elements:
         tags = e.get("tags", {})
         if "geometry" in e or not tags:
@@ -89,51 +96,95 @@ def build_osm_places(elements: list[dict], bbox: dict) -> list[models.Place]:
         cat = place_category(tags)
         if not cat:
             continue
-        lat, lon = (e["lat"], e["lon"]) if e["type"] == "node" else (e["center"]["lat"], e["center"]["lon"])
         osm_id = f"{e['type']}/{e['id']}"
         if osm_id in seen:
             continue
         seen.add(osm_id)
+        lat, lon = (e["lat"], e["lon"]) if e["type"] == "node" else (e["center"]["lat"], e["center"]["lon"])
+        raw.append((e, tags, cat, osm_id, lat, lon))
+    raw.sort(key=lambda r: -_richness(r[1]))  # keep the most detailed entry when OSM has duplicates
+
+    places: list[models.Place] = []
+    kept: list[Candidate] = []
+    for e, tags, cat, osm_id, lat, lon in raw:
+        name = tags.get("name") or tags.get("brand") or tags.get("operator")
+        cand = Candidate(osm_id, name, cat, lat, lon)
+        dup = best_match(cand, kept, taken=set())
+        if dup and name and dup[0].name and same_name(name, dup[0].name) and not kinds_conflict(name, dup[0].name):
+            target = next(pl for pl in places if pl.osm_id == dup[0].key)
+            target.duplicate_osm_ids = [*(target.duplicate_osm_ids or []), osm_id]
+            continue
+        kept.append(cand)
         places.append(models.Place(
             osm_id=osm_id,
-            name=tags.get("name") or tags.get("brand") or tags.get("operator"),
+            name=name,
             category=cat,
             lat=lat,
             lon=lon,
             opening_hours=tags.get("opening_hours"),
+            hours_source="osm" if tags.get("opening_hours") else None,
             phone=tags.get("phone") or tags.get("contact:phone"),
-            source="openstreetmap",
+            sources=["osm"],
+            osm_last_edited=e.get("timestamp"),
             in_demo_area=in_bbox(lat, lon, bbox),
         ))
     return places
 
 
-def build_manual_places(bbox: dict) -> list[models.Place]:
+def load_verified_places(bbox: dict) -> list[dict]:
+    """Places the ShadowMap team checked in person (assets/demo-data/manual_places.json)."""
     path = DEMO_DATA / "manual_places.json"
     if not path.exists():
         return []
-    places = []
+    out = []
     for i, p in enumerate(json.loads(path.read_text()).get("places", []), start=1):
         missing = [k for k in ("name", "category", "lat", "lon", "verified_by", "verified_on") if not p.get(k)]
         if missing:
-            sys.exit(f"manual_places.json entry {i} is missing {missing}. Every manual place must say who verified it and when.")
+            sys.exit(f"manual_places.json entry {i} is missing {missing}. Every verified place must say who checked it and when.")
         if p["category"] not in CATEGORIES:
             sys.exit(f"manual_places.json entry {i}: category must be one of {CATEGORIES}")
-        places.append(models.Place(
-            osm_id=None,
-            name=p["name"],
-            category=p["category"],
-            lat=float(p["lat"]),
-            lon=float(p["lon"]),
-            opening_hours=p.get("opening_hours"),
-            phone=p.get("phone"),
-            source="manual",
-            in_demo_area=in_bbox(float(p["lat"]), float(p["lon"]), bbox),
-            verified_by=p["verified_by"],
-            verified_on=p["verified_on"],
-            note=p.get("note"),
-        ))
-    return places
+        out.append({**p, "lat": float(p["lat"]), "lon": float(p["lon"]), "in_demo_area": in_bbox(float(p["lat"]), float(p["lon"]), bbox)})
+    return out
+
+
+def merge_verified(osm_places: list[models.Place], verified: list[dict]) -> tuple[list[models.Place], list[str]]:
+    """Attach each team-verified place to the OSM entry for the same real place, or add it as a new place.
+    Team data wins for name, position, hours and phone (it was checked on site); OSM keeps its id and edit date."""
+    pool = [Candidate(pl.osm_id, pl.name, pl.category, pl.lat, pl.lon) for pl in osm_places]
+    by_id = {pl.osm_id: pl for pl in osm_places}
+    taken: set[str] = set()
+    added: list[models.Place] = []
+    log: list[str] = []
+    for v in verified:
+        target, reason = None, None
+        if v.get("osm_id"):
+            target = by_id.get(v["osm_id"])
+            if not target:
+                sys.exit(f"manual_places.json: {v['name']} points to {v['osm_id']}, which is not in the OSM download.")
+            reason = "linked by the team to this OpenStreetMap entry"
+        else:
+            m = best_match(Candidate("verified", v["name"], v["category"], v["lat"], v["lon"]), pool, taken)
+            if m:
+                target, reason = by_id[m[0].key], m[1]
+        common = dict(name=v["name"], category=v["category"], lat=v["lat"], lon=v["lon"], verified_by=v["verified_by"],
+                      verified_on=v["verified_on"], note=v.get("note"), in_demo_area=v["in_demo_area"])
+        if target:
+            taken.add(target.osm_id)
+            for k, val in common.items():
+                setattr(target, k, val)
+            if v.get("opening_hours"):
+                target.opening_hours, target.hours_source = v["opening_hours"], "shadowmap"
+            if v.get("phone"):
+                target.phone = v["phone"]
+            target.sources = ["osm", "shadowmap"]
+            target.match_note = reason
+            log.append(f"{v['name']}: same place as OSM {target.osm_id} ({reason})")
+        else:
+            added.append(models.Place(osm_id=None, opening_hours=v.get("opening_hours"),
+                                      hours_source="shadowmap" if v.get("opening_hours") else None,
+                                      phone=v.get("phone"), sources=["shadowmap"], **common))
+            log.append(f"{v['name']}: new place (no matching OSM entry)")
+    return osm_places + added, log
 
 
 def main() -> int:
@@ -144,7 +195,7 @@ def main() -> int:
 
     streets = build_streets(data["elements"], bbox)
     osm_places = build_osm_places(data["elements"], bbox)
-    manual_places = build_manual_places(bbox)
+    all_places, merge_log = merge_verified(osm_places, load_verified_places(bbox))
 
     init_db()
     with Session(engine, expire_on_commit=False) as db:
@@ -158,7 +209,7 @@ def main() -> int:
         models.Place.__table__.drop(db.connection(), checkfirst=True)
         models.Street.__table__.create(db.connection())
         models.Place.__table__.create(db.connection())
-        db.add_all(streets + osm_places + manual_places)
+        db.add_all(streets + all_places)
         db.commit()
 
     lat0, lon0 = area["center"]
@@ -166,13 +217,16 @@ def main() -> int:
     print(f"Street segments: {len(streets)}  total length {sum(s.length_m for s in streets) / 1000:.1f} km")
     print("  by class:", dict(Counter(s.road_class for s in streets)))
     print("  by OSM type:", dict(Counter(s.road_type for s in streets)))
-    print(f"Places from OpenStreetMap: {len(osm_places)}   manually verified: {len(manual_places)}")
+    dups = sum(len(p.duplicate_osm_ids or []) for p in all_places)
+    print(f"Places: {len(all_places)}  by source: {dict(Counter('+'.join(p.sources) for p in all_places))}  (OSM duplicates merged: {dups})")
+    for line in merge_log:
+        print("  verified:", line)
     for inside in (True, False):
-        group = [p for p in osm_places + manual_places if p.in_demo_area == inside]
+        group = [p for p in all_places if p.in_demo_area == inside]
         print(f"  {'inside demo area' if inside else 'nearby help outside area'}: {dict(Counter(p.category for p in group))}")
-    print(f"  with opening hours listed: {sum(1 for p in osm_places + manual_places if p.opening_hours)}")
+    print(f"  with opening hours listed: {sum(1 for p in all_places if p.opening_hours)}")
     nearest = {}
-    for p in osm_places + manual_places:
+    for p in all_places:
         d = haversine_m(lat0, lon0, p.lat, p.lon)
         if p.category in ("police", "hospital", "fuel", "pharmacy") and d < nearest.get(p.category, (1e12,))[0]:
             nearest[p.category] = (d, p.name)

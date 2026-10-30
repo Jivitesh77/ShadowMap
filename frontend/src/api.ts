@@ -43,6 +43,8 @@ export interface Street {
 }
 
 export type SafetyColour = 'green' | 'yellow' | 'red'
+export type PlaceSource = 'osm' | 'shadowmap'
+export type Confidence = 'high' | 'medium' | 'low'
 
 export interface LatLon {
   lat: number
@@ -55,7 +57,7 @@ export interface RouteSummary {
   metres_by_colour: Record<SafetyColour, number>
   red_m: number
   places_passed_not_closed: number
-  places_passed: (Pick<Place, 'id' | 'name' | 'category' | 'status' | 'status_basis' | 'source'> & { distance_m: number })[]
+  places_passed: (Pick<Place, 'id' | 'name' | 'category' | 'status' | 'status_basis' | 'sources'> & { distance_m: number })[]
   freshest_photo_age_min: number | null
   segments: {
     street_id: number
@@ -89,14 +91,20 @@ export interface Place {
   lat: number
   lon: number
   opening_hours: string | null
+  hours_source: PlaceSource | null
   phone: string | null
   status: PlaceStatus
   status_basis: StatusBasis
-  source: 'openstreetmap' | 'manual'
+  sources: PlaceSource[]
+  osm_last_edited: string | null
+  duplicate_osm_ids: string[]
   in_demo_area: boolean
   verified_by: string | null
   verified_on: string | null
   note: string | null
+  match_note: string | null
+  confidence: Confidence
+  confidence_reason: string
   distance_from_center_m: number | null
   distance_m?: number
 }

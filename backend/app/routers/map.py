@@ -13,6 +13,7 @@ from app import models
 from app.db import get_db
 from app.services.geo import haversine_m, point_to_line_m
 from app.services.hours import status_at
+from app.services.places import confidence
 from app.services.scoring import StreetScore
 from app.services.street_state import score_streets
 
@@ -50,6 +51,7 @@ def parse_at(at: str | None) -> datetime:
 
 def place_out(p: models.Place, at: datetime, center: list[float] | None) -> dict:
     status, basis = status_at(p.opening_hours, p.category, at)
+    level, reason = confidence(p.sources or [], p.name, p.verified_on, p.osm_last_edited, datetime.now(IST).date())
     return {
         "id": p.id,
         "osm_id": p.osm_id,
@@ -58,14 +60,20 @@ def place_out(p: models.Place, at: datetime, center: list[float] | None) -> dict
         "lat": p.lat,
         "lon": p.lon,
         "opening_hours": p.opening_hours,
+        "hours_source": p.hours_source,
         "phone": p.phone,
         "status": status,
         "status_basis": basis,
-        "source": p.source,
+        "sources": p.sources or [],
+        "osm_last_edited": p.osm_last_edited,
+        "duplicate_osm_ids": p.duplicate_osm_ids or [],
         "in_demo_area": p.in_demo_area,
         "verified_by": p.verified_by,
         "verified_on": p.verified_on,
         "note": p.note,
+        "match_note": p.match_note,
+        "confidence": level,
+        "confidence_reason": reason,
         "distance_from_center_m": round(haversine_m(center[0], center[1], p.lat, p.lon)) if center else None,
     }
 

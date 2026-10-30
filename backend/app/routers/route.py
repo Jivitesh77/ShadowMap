@@ -64,7 +64,7 @@ def summarise(steps: list[Step], scores: dict[int, StreetScore], streets: dict[i
                 d = point_to_line_m(p.lat, p.lon, geometry)
                 if d <= config.SAFE_PLACE_PASSED_M:
                     passed.append({"id": p.id, "name": p.name, "category": p.category, "status": pa.status,
-                                   "status_basis": pa.basis, "source": p.source, "distance_m": round(d)})
+                                   "status_basis": pa.basis, "sources": p.sources or [], "distance_m": round(d)})
 
     ages = [scores[st.edge.street_id].freshest_photo_age_min for st in steps]
     ages = [a for a in ages if a is not None]

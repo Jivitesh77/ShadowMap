@@ -29,20 +29,21 @@ CATEGORIES = ["police", "hospital", "clinic", "pharmacy", "fuel", "atm", "transi
 
 def place_category(tags: dict) -> str | None:
     """Blueprint §4 safe-place categories. Returns None for things that are not a place to walk into for help."""
-    a, shop = tags.get("amenity"), tags.get("shop")
+    a, shop, hc = tags.get("amenity"), tags.get("shop"), tags.get("healthcare")
     if a == "police":
         return "police"
-    if a == "hospital":
+    if a == "hospital" or hc == "hospital":
         return "hospital"
-    if a in ("clinic", "doctors"):
+    if a in ("clinic", "doctors") or hc in ("clinic", "doctor", "centre"):
         return "clinic"
-    if a == "pharmacy" or shop == "chemist":
+    if a == "pharmacy" or shop == "chemist" or hc == "pharmacy":
         return "pharmacy"
     if a == "fuel":
         return "fuel"
     if a == "atm" or (a == "bank" and tags.get("atm") == "yes"):
         return "atm"
-    if tags.get("highway") == "bus_stop" or a == "bus_station" or tags.get("railway") in ("station", "halt"):
+    if (tags.get("highway") == "bus_stop" or a == "bus_station" or tags.get("railway") in ("station", "halt")
+            or tags.get("public_transport") in ("platform", "station")):
         return "transit"
     if a in ("restaurant", "cafe", "fast_food", "food_court") or shop:
         return "food_shop"

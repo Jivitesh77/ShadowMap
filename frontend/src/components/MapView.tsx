@@ -10,7 +10,7 @@ import { tileProvider } from '../lib/mapProvider'
 export type Selection = { kind: 'street'; id: number } | { kind: 'place'; id: number } | null
 
 function placeIcon(p: Place, selected: boolean) {
-  const cls = ['sm-pin', `sm-${p.status}`, p.source === 'manual' ? 'sm-manual' : '', selected ? 'sm-selected' : '']
+  const cls = ['sm-pin', `sm-${p.status}`, p.sources.includes('shadowmap') ? 'sm-manual' : '', selected ? 'sm-selected' : '']
     .filter(Boolean)
     .join(' ')
   return L.divIcon({

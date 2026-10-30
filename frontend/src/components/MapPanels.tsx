@@ -38,11 +38,26 @@ function StatusPill({ status }: { status: Place['status'] }) {
   return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>{STATUS_LABEL[status]}</span>
 }
 
-function SourceTag({ p }: { p: Place }) {
-  return p.source === 'manual' ? (
-    <span className="rounded-md bg-ink-100 px-2 py-0.5 text-xs font-semibold text-ink-950">Manually added</span>
-  ) : (
-    <span className="rounded-md bg-ink-700 px-2 py-0.5 text-xs font-medium text-ink-300">OpenStreetMap</span>
+const CONFIDENCE_STYLE = {
+  high: 'bg-ink-100 text-ink-950',
+  medium: 'bg-ink-700 text-ink-100',
+  low: 'border border-ink-600 text-ink-300',
+} as const
+
+function formatDate(iso: string | null): string {
+  if (!iso) return 'unknown'
+  const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function SourceTags({ p }: { p: Place }) {
+  return (
+    <>
+      {p.sources.includes('shadowmap') && (
+        <span className="rounded-md bg-ink-100 px-2 py-0.5 text-xs font-semibold text-ink-950">ShadowMap verified</span>
+      )}
+      {p.sources.includes('osm') && <span className="rounded-md bg-ink-700 px-2 py-0.5 text-xs font-medium text-ink-300">OpenStreetMap</span>}
+    </>
   )
 }
 
@@ -67,21 +82,47 @@ export function PlaceInfo({ p, onClose }: { p: Place; onClose: () => void }) {
       <PanelHeader kicker={categoryMeta(p.category).label} title={placeName(p)} onClose={onClose} />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <StatusPill status={p.status} />
-        <SourceTag p={p} />
+        <SourceTags p={p} />
         {!p.in_demo_area && <span className="rounded-md bg-ink-800 px-2 py-0.5 text-xs text-ink-300">Outside demo area</span>}
       </div>
       <p className="mt-3 text-sm text-ink-300">{statusExplanation(p)}</p>
+
+      <div className="mt-3 rounded-xl border border-ink-700 bg-ink-900/60 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-ink-400">Confidence this listing is accurate</p>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${CONFIDENCE_STYLE[p.confidence]}`}>{p.confidence}</span>
+        </div>
+        <p className="mt-1 text-xs text-ink-300">{p.confidence_reason}</p>
+        <p className="mt-1 text-xs text-ink-400">This is about the listing, not a safety rating of the place.</p>
+      </div>
+
       <dl className="mt-3 divide-y divide-ink-700 border-t border-ink-700">
-        <Row label="Listed hours">{p.opening_hours ?? <span className="text-ink-400">Not listed</span>}</Row>
+        <Row label="Listed hours">
+          {p.opening_hours ? (
+            <>
+              {p.opening_hours}
+              <span className="block text-xs text-ink-400">from {p.hours_source === 'shadowmap' ? 'ShadowMap team check' : 'OpenStreetMap'}</span>
+            </>
+          ) : (
+            <span className="text-ink-400">Not listed</span>
+          )}
+        </Row>
         <Row label="Phone">{p.phone ?? <span className="text-ink-400">Not listed</span>}</Row>
         {p.distance_from_center_m != null && <Row label="From IIIT Guwahati">{formatDistance(p.distance_from_center_m)}</Row>}
-        {p.source === 'manual' && (
-          <>
-            <Row label="Verified by">{p.verified_by}</Row>
-            <Row label="Verified on">{p.verified_on}</Row>
-            {p.note && <Row label="How">{p.note}</Row>}
-          </>
-        )}
+        <Row label="Last verified by team">
+          {p.verified_on ? (
+            <>
+              {formatDate(p.verified_on)}
+              <span className="block text-xs text-ink-400">by {p.verified_by}</span>
+            </>
+          ) : (
+            <span className="text-ink-400">Never checked in person</span>
+          )}
+        </Row>
+        {p.sources.includes('osm') && <Row label="Last edited on OpenStreetMap">{formatDate(p.osm_last_edited)}</Row>}
+        {p.note && <Row label="How it was checked">{p.note}</Row>}
+        {p.match_note && <Row label="Matched with OpenStreetMap">{p.match_note}</Row>}
+        {p.duplicate_osm_ids.length > 0 && <Row label="Merged OSM duplicates">{p.duplicate_osm_ids.join(', ')}</Row>}
         <Row label="Last seen open">
           <span className="text-ink-400">No Sentinel photo yet</span>
         </Row>
@@ -202,7 +243,7 @@ export function AreaOverview({ data, onPick }: { data: MapData; onPick: (s: Sele
           <InfoIcon size={18} className="mt-0.5 shrink-0 text-beacon-300" />
           <p className="text-ink-100">
             OpenStreetMap lists no {missing.map((c) => categoryMeta(c).label.toLowerCase()).join(', ')} inside this area. The
-            nearest ones are shown below. Places checked in person by the team can be added and are marked “Manually added”.
+            nearest ones are shown below. Places the team checks in person can be added and are marked “ShadowMap verified”.
           </p>
         </div>
       )}
@@ -241,7 +282,7 @@ export function AreaOverview({ data, onPick }: { data: MapData; onPick: (s: Sele
           <li className="flex items-center gap-2.5"><span className="sm-pin sm-open !h-5 !w-5" />Open at chosen time</li>
           <li className="flex items-center gap-2.5"><span className="sm-pin sm-closed !h-5 !w-5" />Closed</li>
           <li className="flex items-center gap-2.5"><span className="sm-pin sm-unknown !h-5 !w-5" />Hours unknown</li>
-          <li className="flex items-center gap-2.5"><span className="sm-pin sm-unknown sm-manual !h-5 !w-5" />Manually added place</li>
+          <li className="flex items-center gap-2.5"><span className="sm-pin sm-unknown sm-manual !h-5 !w-5" />Checked in person by ShadowMap</li>
           {(['green', 'yellow', 'red'] as const).map((c) => (
             <li key={c} className="flex items-center gap-2.5">
               <span className="h-1 w-5 shrink-0 rounded-full" style={{ background: SAFETY_COLOURS[c] }} />
@@ -257,7 +298,8 @@ export function AreaOverview({ data, onPick }: { data: MapData; onPick: (s: Sele
 
       <div className="border-t border-ink-700 pt-3 text-xs text-ink-400">
         <p>
-          Source: OpenStreetMap, downloaded {downloaded}. {withHours} of {data.places.length} places list opening hours.
+          Sources: OpenStreetMap (downloaded {downloaded}) · ShadowMap verified: {data.places.filter((p) => p.sources.includes('shadowmap')).length}.{' '}
+          {withHours} of {data.places.length} places list opening hours.
         </p>
         <p className="mt-1">Categories: {CATEGORY_ORDER.map((c) => `${categoryMeta(c).plural} ${data.places.filter((p) => p.category === c).length}`).join(' · ')}</p>
       </div>

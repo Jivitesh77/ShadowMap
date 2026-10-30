@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
-import { api } from '../api'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { api, type LatLon, type RouteResult } from '../api'
 import { useApi } from '../hooks/useApi'
 import { MapPinIcon } from '../components/Icons'
 import { AreaOverview, PlaceInfo, StreetInfo } from '../components/MapPanels'
 import { MapView, type Selection } from '../components/MapView'
+import { RoutePanel, type PickTarget } from '../components/RoutePanel'
 import { EmptyState, ErrorState, Skeleton } from '../components/States'
 import { CATEGORY_ORDER, categoryMeta } from '../lib/mapMeta'
 
@@ -23,6 +24,51 @@ export default function WalkerPage() {
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [openOnly, setOpenOnly] = useState(false)
   const [selection, setSelection] = useState<Selection>(null)
+
+  // Route planning
+  const [start, setStart] = useState<LatLon | null>(null)
+  const [end, setEnd] = useState<LatLon | null>(null)
+  const [picking, setPicking] = useState<PickTarget>(null)
+  const [route, setRoute] = useState<RouteResult | null>(null)
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [routeError, setRouteError] = useState<string | null>(null)
+
+  const findRoute = useCallback(async () => {
+    if (!start || !end) return
+    setRouteLoading(true)
+    setRouteError(null)
+    try {
+      setRoute(await api.route(start, end, at))
+    } catch (err) {
+      setRoute(null)
+      setRouteError((err as Error).message)
+    } finally {
+      setRouteLoading(false)
+    }
+  }, [start, end, at])
+
+  useEffect(() => {
+    if (start && end) findRoute()
+    else setRoute(null)
+  }, [findRoute, start, end])
+
+  const onPick = (p: LatLon) => {
+    if (picking === 'start') {
+      setStart(p)
+      setPicking(end ? null : 'end')
+    } else if (picking === 'end') {
+      setEnd(p)
+      setPicking(null)
+    }
+  }
+
+  const clearRoute = () => {
+    setStart(null)
+    setEnd(null)
+    setPicking(null)
+    setRoute(null)
+    setRouteError(null)
+  }
 
   const data = map.data
   const counts = useMemo(() => {
@@ -112,7 +158,7 @@ export default function WalkerPage() {
       {map.error && !data ? (
         <ErrorState message={map.error} onRetry={map.reload} />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
           <div className="relative h-[62vh] min-h-[380px] min-w-0 overflow-hidden rounded-2xl border border-ink-700 lg:h-[calc(100vh-220px)]">
             {!data ? (
               <Skeleton className="h-full w-full rounded-none" />
@@ -124,16 +170,33 @@ export default function WalkerPage() {
               </div>
             ) : (
               <>
-                <MapView source={data.source} streets={data.streets} places={visiblePlaces} selection={selection} onSelect={setSelection} />
+                <MapView
+                  source={data.source}
+                  streets={data.streets}
+                  places={visiblePlaces}
+                  selection={selection}
+                  onSelect={setSelection}
+                  picking={picking !== null}
+                  onPick={onPick}
+                  start={start}
+                  end={end}
+                  route={route}
+                />
                 <div className="pointer-events-none absolute top-3 left-14 z-[500] rounded-lg bg-ink-950/90 px-3 py-1.5 text-xs text-ink-300 ring-1 ring-ink-700">
-                  Open/closed for <span className="font-semibold text-ink-100">{formatAt(data.at)}</span>
+                  {picking ? (
+                    <span className="font-semibold text-beacon-300">Tap the map to set the {picking === 'start' ? 'start (A)' : 'destination (B)'}</span>
+                  ) : (
+                    <>
+                      Open/closed for <span className="font-semibold text-ink-100">{formatAt(data.at)}</span>
+                    </>
+                  )}
                   {map.loading && <span className="ml-2 text-beacon-300">updating…</span>}
                 </div>
               </>
             )}
           </div>
 
-          <aside className="min-w-0 rounded-2xl border border-ink-700 bg-ink-850 p-5 lg:h-[calc(100vh-220px)] lg:overflow-y-auto">
+          <aside className="min-w-0 space-y-6 rounded-2xl border border-ink-700 bg-ink-850 p-5 lg:h-[calc(100vh-220px)] lg:overflow-y-auto">
             {!data ? (
               <div className="space-y-3">
                 <Skeleton className="h-5 w-2/5" />
@@ -145,7 +208,24 @@ export default function WalkerPage() {
             ) : selectedPlace ? (
               <PlaceInfo p={selectedPlace} onClose={() => setSelection(null)} />
             ) : (
-              <AreaOverview data={data} onPick={setSelection} />
+              <>
+                <RoutePanel
+                  start={start}
+                  end={end}
+                  picking={picking}
+                  setPicking={setPicking}
+                  onClear={clearRoute}
+                  route={route}
+                  loading={routeLoading}
+                  error={routeError}
+                  onRetry={findRoute}
+                />
+                {!route && (
+                  <div className="border-t border-ink-700 pt-5">
+                    <AreaOverview data={data} onPick={setSelection} />
+                  </div>
+                )}
+              </>
             )}
           </aside>
         </div>

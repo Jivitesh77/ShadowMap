@@ -13,6 +13,8 @@ from app import models
 from app.db import get_db
 from app.services.geo import haversine_m, point_to_line_m
 from app.services.hours import status_at
+from app.services.scoring import StreetScore
+from app.services.street_state import score_streets
 
 router = APIRouter(prefix="/api")
 
@@ -68,6 +70,20 @@ def place_out(p: models.Place, at: datetime, center: list[float] | None) -> dict
     }
 
 
+def score_out(sc: StreetScore | None) -> dict:
+    if sc is None:
+        return {"score": None, "colour": None}
+    return {
+        "score": sc.score,
+        "colour": sc.colour,
+        "map_score": sc.map_score,
+        "photo_score": sc.photo_score,
+        "photo_weight": sc.weight,
+        "report_adjustment": sc.report_adjustment,
+        "freshest_photo_age_min": sc.freshest_photo_age_min,
+    }
+
+
 @router.get("/map")
 def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-30T23:30"), db: Session = Depends(get_db)):
     when = parse_at(at)
@@ -75,6 +91,7 @@ def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-3
     center = (source.get("area") or {}).get("center")
     streets = db.scalars(select(models.Street)).all()
     places = db.scalars(select(models.Place)).all()
+    scores = score_streets(db, when)
     return {
         "at": when.isoformat(timespec="minutes"),
         "source": source,
@@ -88,6 +105,7 @@ def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-3
                 "length_m": s.length_m,
                 "geometry": s.geometry,
                 "osm_way_id": s.osm_way_id,
+                **score_out(scores.get(s.id)),
             }
             for s in streets
         ],
@@ -118,7 +136,7 @@ def get_street(street_id: int, at: str | None = None, db: Session = Depends(get_
         "lit": s.lit,
         "length_m": s.length_m,
         "osm_way_id": s.osm_way_id,
-        "map_score": s.map_score,
+        **score_out(score_streets(db, when).get(s.id)),
         "observations": observations,
         "reports": reports,
         "nearby_places": nearby,

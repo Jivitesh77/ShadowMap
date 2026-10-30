@@ -1,5 +1,5 @@
 // Labels, icons and styles for map items. Green / yellow / red are kept for safety scores only.
-import type { Place, RoadClass, StatusBasis } from '../api'
+import type { Place, RoadClass, SafetyColour, StatusBasis } from '../api'
 
 export interface CategoryMeta {
   label: string
@@ -100,4 +100,19 @@ export function formatDistance(m: number): string {
 
 export function osmUrl(osmId: string | null): string | null {
   return osmId ? `https://www.openstreetmap.org/${osmId}` : null
+}
+
+// Street safety colours (blueprint §7): 70-100 green, 40-69 yellow, 0-39 red.
+export const SAFETY_COLOURS: Record<SafetyColour, string> = { green: '#22c55e', yellow: '#eab308', red: '#ef4444' }
+export const SAFETY_LABEL: Record<SafetyColour, string> = {
+  green: 'Green (70–100): lit, people around, open places nearby',
+  yellow: 'Yellow (40–69): some concerns; fine if nothing better',
+  red: 'Red (0–39): dark, empty or isolated; avoid at night',
+}
+
+export function formatAge(minutes: number | null | undefined): string {
+  if (minutes == null) return 'Map data only'
+  if (minutes < 1) return 'Seen just now'
+  if (minutes < 60) return `Seen ${Math.round(minutes)} min ago`
+  return `Seen ${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min ago`
 }

@@ -28,8 +28,12 @@ def latest_osm_file() -> Path:
     return files[-1]
 
 
-def in_bbox(lat: float, lon: float, b: dict) -> bool:
-    return b["south"] <= lat <= b["north"] and b["west"] <= lon <= b["east"]
+def in_bbox(lat: float, lon: float, b: dict, pad: float = 0.0) -> bool:
+    return b["south"] - pad <= lat <= b["north"] + pad and b["west"] - pad <= lon <= b["east"] + pad
+
+
+# Road pieces up to ~300 m outside the box are kept, so roads that leave the box and come back stay connected.
+ROUTING_PAD_DEG = 0.003
 
 
 def split_ways(ways: list[dict]) -> list[dict]:
@@ -58,8 +62,7 @@ def build_streets(elements: list[dict], bbox: dict) -> list[models.Street]:
     streets = []
     for seg in split_ways(ways):
         geom = seg["geometry"]
-        inside = any(in_bbox(lat, lon, bbox) for lat, lon in geom)
-        if not inside:
+        if not any(in_bbox(lat, lon, bbox, ROUTING_PAD_DEG) for lat, lon in geom):
             continue  # parts of long roads that run far outside the demo area
         tags = seg["way"]["tags"]
         streets.append(models.Street(
@@ -72,7 +75,7 @@ def build_streets(elements: list[dict], bbox: dict) -> list[models.Street]:
             end_node=seg["end_node"],
             length_m=round(line_length_m(geom), 1),
             geometry=[[round(a, 7), round(b, 7)] for a, b in geom],
-            in_demo_area=True,
+            in_demo_area=any(in_bbox(lat, lon, bbox) for lat, lon in geom),
         ))
     return streets
 

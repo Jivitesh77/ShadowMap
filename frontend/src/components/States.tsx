@@ -21,12 +21,12 @@ export function LoadingBlock({ label = 'Loading…', rows = 3 }: { label?: strin
   )
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorState({ message, onRetry, title = 'Something went wrong' }: { message: string; onRetry?: () => void; title?: string }) {
   return (
     <div role="alert" className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger/10 p-4">
       <AlertIcon className="mt-0.5 shrink-0 text-danger" />
       <div className="flex-1">
-        <p className="text-sm font-semibold text-ink-100">Something went wrong</p>
+        <p className="text-sm font-semibold text-ink-100">{title}</p>
         <p className="mt-1 text-sm text-ink-300">{message}</p>
       </div>
       {onRetry && (

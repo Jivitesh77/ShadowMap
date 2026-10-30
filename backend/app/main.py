@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app import config, models
 from app.db import get_db, init_db, utcnow
 from app.routers import map as map_router
+from app.routers import route as route_router
 
 
 @asynccontextmanager
@@ -26,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(map_router.router)
+app.include_router(route_router.router)
 
 
 @app.get("/")

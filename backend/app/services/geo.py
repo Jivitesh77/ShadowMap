@@ -35,3 +35,46 @@ def point_to_line_m(lat: float, lon: float, points: list[list[float]]) -> float:
         x, y = xy(points[0])
         best = math.hypot(x, y)
     return best
+
+
+def cumulative_m(points: list[list[float]]) -> list[float]:
+    out = [0.0]
+    for i in range(len(points) - 1):
+        out.append(out[-1] + haversine_m(*points[i], *points[i + 1]))
+    return out
+
+
+def locate_on_line(lat: float, lon: float, points: list[list[float]]) -> tuple[float, float, list[float]]:
+    """Closest point on a polyline. Returns (distance_m, metres_along_line, [lat, lon] of that point)."""
+    kx = math.cos(math.radians(lat)) * 111_320
+    ky = 110_540
+    cum = cumulative_m(points)
+    best = (float("inf"), 0.0, points[0])
+    for i in range(len(points) - 1):
+        a, b = points[i], points[i + 1]
+        ax, ay = (a[1] - lon) * kx, (a[0] - lat) * ky
+        dx, dy = (b[1] - a[1]) * kx, (b[0] - a[0]) * ky
+        seg2 = dx * dx + dy * dy
+        t = 0.0 if seg2 == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / seg2))
+        d = math.hypot(ax + t * dx, ay + t * dy)
+        if d < best[0]:
+            point = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]
+            best = (d, cum[i] + t * (cum[i + 1] - cum[i]), point)
+    return best
+
+
+def cut_line(points: list[list[float]], start_m: float, end_m: float) -> list[list[float]]:
+    """The part of a polyline between two distances along it (start_m <= end_m)."""
+    cum = cumulative_m(points)
+
+    def at(m: float) -> list[float]:
+        for i in range(len(points) - 1):
+            if cum[i + 1] >= m:
+                seg = cum[i + 1] - cum[i]
+                t = 0.0 if seg == 0 else (m - cum[i]) / seg
+                a, b = points[i], points[i + 1]
+                return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]
+        return list(points[-1])
+
+    inner = [list(p) for p, c in zip(points, cum) if start_m < c < end_m]
+    return [at(start_m), *inner, at(end_m)]

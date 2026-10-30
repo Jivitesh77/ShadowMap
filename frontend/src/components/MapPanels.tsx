@@ -5,8 +5,11 @@ import { useApi } from '../hooks/useApi'
 import {
   CATEGORY_ORDER,
   ROAD_CLASS,
+  SAFETY_COLOURS,
+  SAFETY_LABEL,
   STATUS_LABEL,
   categoryMeta,
+  formatAge,
   formatDistance,
   osmUrl,
   placeName,
@@ -100,9 +103,33 @@ export function StreetInfo({ id, at, onClose, onPick }: { id: number; at?: strin
     <div>
       <PanelHeader kicker="Street" title={s.name || 'Unnamed road'} onClose={onClose} />
       <div className="mt-3 rounded-xl border border-ink-700 bg-ink-900/60 p-3">
-        <p className="text-xs text-ink-400">Safety score</p>
-        <p className="mt-0.5 text-sm text-ink-100">Not calculated yet</p>
-        <p className="mt-1 text-xs text-ink-400">Map data only · no Sentinel photos of this street yet</p>
+        <div className="flex items-baseline justify-between">
+          <p className="text-xs text-ink-400">Safety score</p>
+          <p className="text-xs text-ink-400">{formatAge(s.freshest_photo_age_min)}</p>
+        </div>
+        {s.score == null || !s.colour ? (
+          <p className="mt-0.5 text-sm text-ink-100">Not available</p>
+        ) : (
+          <>
+            <p className="mt-0.5 flex items-center gap-2">
+              <span className="h-3 w-3 rounded-full" style={{ background: SAFETY_COLOURS[s.colour] }} />
+              <span className="text-2xl font-semibold tabular-nums text-ink-100">{Math.round(s.score)}</span>
+              <span className="text-sm text-ink-400">/ 100</span>
+            </p>
+            <p className="mt-1 text-xs text-ink-400">{SAFETY_LABEL[s.colour]}</p>
+            <dl className="mt-2 space-y-0.5 border-t border-ink-700 pt-2 text-xs">
+              <div className="flex justify-between"><dt className="text-ink-400">Map score</dt><dd className="text-ink-100">{s.map_score}</dd></div>
+              <div className="flex justify-between">
+                <dt className="text-ink-400">Photo score</dt>
+                <dd className="text-ink-100">{s.photo_score != null ? `${s.photo_score} (weight ${s.photo_weight})` : 'No photos yet'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-ink-400">Community reports</dt>
+                <dd className="text-ink-100">{s.report_adjustment ? (s.report_adjustment > 0 ? `+${s.report_adjustment}` : s.report_adjustment) : 'None active'}</dd>
+              </div>
+            </dl>
+          </>
+        )}
       </div>
       <dl className="mt-3 divide-y divide-ink-700">
         <Row label="Road class">{ROAD_CLASS[s.road_class].label}</Row>
@@ -216,15 +243,17 @@ export function AreaOverview({ data, onPick }: { data: MapData; onPick: (s: Sele
           <li className="flex items-center gap-2.5"><span className="sm-pin sm-closed !h-5 !w-5" />Closed</li>
           <li className="flex items-center gap-2.5"><span className="sm-pin sm-unknown !h-5 !w-5" />Hours unknown</li>
           <li className="flex items-center gap-2.5"><span className="sm-pin sm-unknown sm-manual !h-5 !w-5" />Manually added place</li>
-          {(['main', 'residential'] as const).map((c) => (
+          {(['green', 'yellow', 'red'] as const).map((c) => (
             <li key={c} className="flex items-center gap-2.5">
-              <span className="h-1 w-5 rounded-full" style={{ background: ROAD_CLASS[c].color, height: ROAD_CLASS[c].weight }} />
-              {ROAD_CLASS[c].label}
+              <span className="h-1 w-5 shrink-0 rounded-full" style={{ background: SAFETY_COLOURS[c] }} />
+              {SAFETY_LABEL[c].split(':')[0]}
             </li>
           ))}
           <li className="flex items-center gap-2.5"><span className="h-0 w-5 border-t-2 border-dashed border-beacon-400" />Demo area (2 × 2 km)</li>
         </ul>
-        <p className="mt-2 text-xs text-ink-400">Street colours are road types for now. Safety colours come once scores are calculated.</p>
+        <p className="mt-2 text-xs text-ink-400">
+          Street colours are safety scores (0–100). Until Sentinel photos or reports arrive, scores come from map data only.
+        </p>
       </div>
 
       <div className="border-t border-ink-700 pt-3 text-xs text-ink-400">

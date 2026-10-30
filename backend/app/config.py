@@ -45,3 +45,6 @@ MAX_DETOUR_RATIO = 1.5
 PHOTO_KEEP_HOURS = 6
 SNAP_RADIUS_M = 25
 VIDEO_FRAME_INTERVAL_S = 5
+# Walking speed for time estimates. Blueprint §8 example: 1.1 km = 13 min, i.e. about 5 km/h.
+WALK_SPEED_KMH = 5.0
+SAFE_PLACE_PASSED_M = 50  # a place counts as "passed" within 50 m of the route

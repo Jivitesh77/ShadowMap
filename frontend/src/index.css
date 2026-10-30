@@ -118,3 +118,21 @@ body {
     0 0 0 4px rgb(245 184 61 / 0.45),
     0 2px 8px rgb(0 0 0 / 0.6);
 }
+
+.sm-endpoint {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  color: var(--color-ink-950);
+  font-weight: 700;
+  font-size: 13px;
+  border: 3px solid var(--color-beacon-400);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+}
+.sm-picking,
+.sm-picking .leaflet-interactive {
+  cursor: crosshair !important;
+}

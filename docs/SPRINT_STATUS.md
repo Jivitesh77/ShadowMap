@@ -4,15 +4,15 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-30 — M0, M1, M2 done and verified. Next: M3 (map score + street colours).
+Last updated: 2026-10-30 — M0–M4 done and verified. Next: M5 (Sentinel capture). Demo walk still to be chosen (see log).
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
 | M0 | Project skeleton | P1 | 2 h | Done (verified) | 3/3 pytest pass; health OK direct + via proxy; all 5 pages render (screenshots); offline state checked |
 | M1 | Real map data for the demo area | P1 | 3 h | Done (verified) | 72 street segments (18.2 km), 20 real OSM places; map clickable on desktop + phone |
 | M2 | "Open now" + demo clock | P1 | 2 h | Done (verified) | Hours reader with 8 tests; walk-time picker (Now / Tonight 11:30 pm / any time); open/closed/unknown + basis shown |
-| M3 | Map score + street colours | P1 | 1.5 h | Not started | |
-| M4 | Route finder (shortest vs safest) | P1 | 3 h | Not started | |
+| M3 | Safety score + street colours | P1 | 1.5 h | Done (verified) | Full §7 formula incl. photo score, freshness, reports, clamp; 11 scoring tests |
+| M4 | Route finder (shortest vs safest) | P1 | 3 h | Done (verified) | Dijkstra both costs, 50% limit, comparison card; 10 routing + 1 API test; real routes on campus |
 | M5 | Sentinel capture page | P1 | 3 h | Not started | |
 | M6 | AI analysis, live colours, blur, deletion | P1 | 4 h | Not started | Needs Gemini key |
 | M7 | Video mode | P1 | 2.5 h | Not started | Real night videos may arrive only after building; verify in the testing phase |
@@ -74,3 +74,25 @@ Checks run (evidence):
 
 Fixed during verification: summary crash after build (detached objects); map wider than phone screen.
 Not yet seen on screen: a real manually added place (none verified yet) — logic covered by test.
+
+### 2026-10-30 — M3 Safety score + M4 Routing (Done, verified)
+Built:
+- `app/services/scoring.py`: blueprint §7 map score (road class 60/45/35/25, +5 per open place ≤50 m max +15, +10 police/hospital ≤200 m), photo score (lighting 40/15/0, people 25/12/0, +5 per visible open place max 15, +5 vehicles, isolation −5/−10, hazard −5), freshness w = 0.5^(age/60), S = w·S_photo + (1−w)·S_map + R, clamp 0–100, green ≥70 / yellow 40–69 / red ≤39; §10 report effects and fade times. Safest cost = length × (1 + 3 × (100 − S)/100).
+- `app/services/street_state.py`: scores every street from the database for a walk time.
+- `app/services/routing.py`: graph from street segments; start/end placed on the nearest street (≤250 m); Dijkstra for shortest (length) and safest (blueprint cost); 50% detour limit with fallback; errors too_far / not_connected / same_place.
+- `POST /api/route`: both routes with real distance, walking time (5 km/h), metres per colour, red metres, safe places passed (≤50 m, not closed), freshest photo age, segments, honest notes. `/api/map` and `/api/streets/{id}` now return score + breakdown.
+- Frontend: streets coloured by safety score, tap-to-choose A/B, safest route (amber) and shortest (dotted, only when different), comparison card, notes, places passed, score breakdown in street panel.
+
+Checks run (evidence):
+- `pytest`: 39 passed (11 scoring, 9 routing on hand-made graphs incl. invalid point, disconnected roads, single road with no alternative, detour limit, same street, continuous geometry, negative cost; 1 route API test).
+- Live API on the owner's server: campus centre → Ranjeeta (NH17) = 1250 m, 15 min, 0 m red, 2 places passed, same route (notes say so); Fancy Bazar → 422 too_far; SE road group → 422 not_connected; same point → 422 same_place; latitude 126 → 422.
+- Browser test (script-driven, owner's server): tapping Start + two map points draws the route and fills the card (1.5 km, 18 min, 0 m red, 2 places); a point >250 m from streets shows the error; no sideways scrolling on phone.
+
+Measurements on the real campus network (map data only, 23:30):
+- All 73 streets score 45–64 → all yellow. Expected: without photos/reports no street can be red or green here.
+- 400 random routes: 337 identical shortest/safest, 5 differ by <0.5%, 57 not connected (5-segment SE road group links to the rest only outside the download), 1 same place.
+- What-if (streets on the shortest route turned dark): an alternative within +50% exists in 155 of 233 testable routes; median +3% longer. So "a street went dark → reroute" can be demonstrated on campus once Sentinel photos exist.
+
+Demo walk: owner suggested campus → Fancy Bazar. Checked: Fancy Bazar is 20.7 km straight-line from IIIT Guwahati (OSM node 1698296623) — not walkable and far outside the map area. Owner to decide (see report).
+
+Fixed during verification: road pieces just outside the box were dropped (now kept within ~300 m, marked outside the area); vague error title for route errors.

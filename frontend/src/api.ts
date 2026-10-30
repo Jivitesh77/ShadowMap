@@ -33,6 +33,52 @@ export interface Street {
   length_m: number
   geometry: [number, number][]
   osm_way_id: number
+  score: number | null
+  colour: SafetyColour | null
+  map_score?: number
+  photo_score?: number | null
+  photo_weight?: number
+  report_adjustment?: number
+  freshest_photo_age_min?: number | null
+}
+
+export type SafetyColour = 'green' | 'yellow' | 'red'
+
+export interface LatLon {
+  lat: number
+  lon: number
+}
+
+export interface RouteSummary {
+  distance_m: number
+  duration_min: number
+  metres_by_colour: Record<SafetyColour, number>
+  red_m: number
+  safe_places_passed: number
+  places_passed: (Pick<Place, 'id' | 'name' | 'category' | 'status' | 'status_basis' | 'source'> & { distance_m: number })[]
+  freshest_photo_age_min: number | null
+  segments: {
+    street_id: number
+    name: string | null
+    road_class: RoadClass
+    length_m: number
+    score: number
+    colour: SafetyColour
+    freshest_photo_age_min: number | null
+  }[]
+  geometry: [number, number][]
+}
+
+export interface RouteResult {
+  at: string
+  start: { requested: LatLon; snapped: [number, number]; snap_distance_m: number }
+  end: { requested: LatLon; snapped: [number, number]; snap_distance_m: number }
+  shortest: RouteSummary
+  safest: RouteSummary
+  same_route: boolean
+  safest_within_detour_limit: boolean
+  max_detour_ratio: number
+  notes: string[]
 }
 
 export interface Place {
@@ -83,7 +129,13 @@ export interface StreetDetail {
   lit: string | null
   length_m: number
   osm_way_id: number
-  map_score: number | null
+  score: number | null
+  colour: SafetyColour | null
+  map_score?: number
+  photo_score?: number | null
+  photo_weight?: number
+  report_adjustment?: number
+  freshest_photo_age_min?: number | null
   observations: number
   reports: number
   nearby_places: Place[]
@@ -119,6 +171,8 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000): 
     try {
       const body = await res.json()
       if (typeof body?.detail === 'string') detail = body.detail
+      else if (typeof body?.detail?.message === 'string') detail = body.detail.message
+      else if (Array.isArray(body?.detail)) detail = 'The request was not valid.'
     } catch {
       /* body was not JSON */
     }
@@ -135,6 +189,8 @@ export const api = {
   health: () => request<Health>('/api/health', undefined, 4000),
   summary: () => request<Summary>('/api/summary'),
   map: (at?: string) => request<MapData>(`/api/map${at ? `?at=${encodeURIComponent(at)}` : ''}`),
+  route: (start: LatLon, end: LatLon, at?: string) =>
+    request<RouteResult>('/api/route', { method: 'POST', body: JSON.stringify({ start, end, at }) }, 20000),
   street: (id: number, at?: string) =>
     request<StreetDetail>(`/api/streets/${id}${at ? `?at=${encodeURIComponent(at)}` : ''}`),
 }

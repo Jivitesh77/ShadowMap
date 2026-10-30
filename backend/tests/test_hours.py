@@ -38,10 +38,10 @@ def test_past_midnight():
     assert status_at("Mo-Su 18:00-02:00", "food_shop", datetime(2026, 10, 30, 3, 0)) == ("closed", "listed")
 
 
-def test_missing_hours_use_blueprint_defaults():
-    assert status_at(None, "police", THU_2330) == ("open", "default")
-    assert status_at(None, "hospital", THU_2330) == ("open", "default")
-    assert status_at(None, "pharmacy", THU_2330) == ("unknown", "missing")
+def test_missing_hours_are_never_assumed_open():
+    for category in ("police", "hospital", "hotel", "pharmacy", "fuel"):
+        assert status_at(None, category, THU_2330) == ("unknown", "missing")
+        assert status_at("", category, THU_2330) == ("unknown", "missing")
 
 
 def test_unreadable_hours_are_unknown_not_guessed():

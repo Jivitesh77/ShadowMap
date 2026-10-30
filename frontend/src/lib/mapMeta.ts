@@ -59,11 +59,14 @@ export function placeName(p: Place): string {
 
 export const STATUS_LABEL = { open: 'Open', closed: 'Closed', unknown: 'Hours unknown' } as const
 
-export function statusExplanation(p: Pick<Place, 'status' | 'status_basis' | 'opening_hours'>): string {
+const USUALLY_24H = new Set(['police', 'hospital', 'hotel'])
+
+export function statusExplanation(p: Pick<Place, 'status' | 'status_basis' | 'opening_hours' | 'category'>): string {
   const map: Record<StatusBasis, string> = {
     listed: `Based on the listed hours: ${p.opening_hours}`,
-    default: 'No hours listed. Assumed open 24 hours because places of this type usually are — not confirmed.',
-    missing: 'No opening hours are listed for this place.',
+    missing: USUALLY_24H.has(p.category)
+      ? 'No opening hours are listed. Places of this type are often open 24 hours, but that is not confirmed — treat as unknown.'
+      : 'No opening hours are listed for this place.',
     unreadable: `Hours are listed (“${p.opening_hours}”) but in a format ShadowMap cannot read yet.`,
   }
   return map[p.status_basis]

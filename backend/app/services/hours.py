@@ -10,8 +10,9 @@ from datetime import datetime
 
 DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
-# Blueprint §4: categories that are open around the clock when no hours are listed.
-DEFAULT_24H = {"police", "hospital", "hotel"}
+# Blueprint §4 suggested treating these as open 24 h when no hours are listed. Owner decision (2026-10-30):
+# never assume a place is open because hours are missing. They stay "unknown"; the screen may only add a hint.
+USUALLY_24H = {"police", "hospital", "hotel"}
 
 _TIME = r"(\d{1,2}):(\d{2})"
 _RANGE = re.compile(rf"^{_TIME}\s*-\s*{_TIME}\+?$")
@@ -89,13 +90,10 @@ def status_at(opening_hours: str | None, category: str, at: datetime) -> tuple[s
 
     status: "open" / "closed" / "unknown"
     basis:  "listed"   — from the place's own hours
-            "default"  — no hours listed; category assumed 24 h (police, hospital, hotel)
-            "missing"  — no hours listed
+            "missing"  — no hours listed (never assumed open, whatever the category)
             "unreadable" — hours listed in a format we cannot read
     """
     if not opening_hours:
-        if category in DEFAULT_24H:
-            return "open", "default"
         return "unknown", "missing"
     try:
         week = parse(opening_hours)

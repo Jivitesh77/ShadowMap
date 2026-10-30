@@ -48,7 +48,7 @@ def test_map_endpoint_returns_streets_places_and_status():
         assert body["at"] == "2026-10-29T23:30"
         assert any(s["name"] == "Test Rd" for s in body["streets"])
         police = next(p for p in body["places"] if p["name"] == "Test Police")
-        assert (police["status"], police["status_basis"]) == ("open", "default")
+        assert (police["status"], police["status_basis"]) == ("unknown", "missing")
         street_id = next(s["id"] for s in body["streets"] if s["name"] == "Test Rd")
         detail = client.get(f"/api/streets/{street_id}").json()
         assert detail["nearby_places"][0]["name"] == "Test Police"

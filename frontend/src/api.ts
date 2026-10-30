@@ -22,7 +22,7 @@ export interface Summary {
 
 export type RoadClass = 'main' | 'residential' | 'lane' | 'underpass'
 export type PlaceStatus = 'open' | 'closed' | 'unknown'
-export type StatusBasis = 'listed' | 'default' | 'missing' | 'unreadable'
+export type StatusBasis = 'listed' | 'missing' | 'unreadable'
 
 export interface Street {
   id: number
@@ -54,7 +54,7 @@ export interface RouteSummary {
   duration_min: number
   metres_by_colour: Record<SafetyColour, number>
   red_m: number
-  safe_places_passed: number
+  places_passed_not_closed: number
   places_passed: (Pick<Place, 'id' | 'name' | 'category' | 'status' | 'status_basis' | 'source'> & { distance_m: number })[]
   freshest_photo_age_min: number | null
   segments: {

@@ -226,7 +226,6 @@ export function AreaOverview({ data, onPick }: { data: MapData; onPick: (s: Sele
                   <span className="block truncate text-sm text-ink-100">{placeName(p)}</span>
                   <span className="block text-xs text-ink-400">
                     {categoryMeta(p.category).label} · {STATUS_LABEL[p.status]}
-                    {p.status_basis === 'default' ? ' (assumed)' : ''}
                   </span>
                 </span>
                 <span className="shrink-0 text-sm tabular-nums text-ink-300">{formatDistance(p.distance_from_center_m ?? 0)}</span>

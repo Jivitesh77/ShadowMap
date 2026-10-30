@@ -74,7 +74,8 @@ def summarise(steps: list[Step], scores: dict[int, StreetScore], streets: dict[i
         "duration_min": round(distance / (config.WALK_SPEED_KMH * 1000 / 60)),
         "metres_by_colour": {k: round(v) for k, v in metres.items()},
         "red_m": round(metres["red"]),
-        "safe_places_passed": sum(1 for p in passed if p["status"] != "closed"),
+        # Places within 50 m that are not known to be closed. Not a safety claim: being near a place proves nothing.
+        "places_passed_not_closed": sum(1 for p in passed if p["status"] != "closed"),
         "places_passed": passed,
         "freshest_photo_age_min": min(ages) if ages else None,
         "segments": segments,
@@ -111,7 +112,7 @@ def route(req: RouteRequest, db: Session = Depends(get_db)):
     if safest["red_m"] > 0:
         notes.append(
             f"This route still includes {safest['red_m']} m of red streets; no route within the detour limit avoids them. "
-            "Consider the nearest safe spot or a cab."
+            "Consider going to the nearest open help point or taking a cab."
         )
     if shortest["freshest_photo_age_min"] is None and safest["freshest_photo_age_min"] is None:
         notes.append("Scores come from map data only: no Sentinel photos of these streets yet.")

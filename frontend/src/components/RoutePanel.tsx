@@ -56,7 +56,7 @@ function Comparison({ route }: { route: RouteResult }) {
     ['Distance', (r) => formatDistance(r.distance_m)],
     ['Walking time', (r) => `${r.duration_min} min`],
     ['On red streets', (r) => `${r.red_m} m`],
-    ['Safe places passed', (r) => String(r.safe_places_passed)],
+    ['Places passed (not closed)', (r) => String(r.places_passed_not_closed)],
     ['Freshest photo', (r) => formatAge(r.freshest_photo_age_min)],
   ]
   return (

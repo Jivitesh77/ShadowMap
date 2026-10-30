@@ -1,4 +1,4 @@
-"""Map data for the screens: streets, safe places and their open/closed status at a chosen time."""
+"""Map data for the screens: streets, places and their open/closed/unknown status at a chosen time."""
 
 import json
 from datetime import datetime, timedelta, timezone

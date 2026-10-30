@@ -31,7 +31,7 @@ class Street(Base):
 
 
 class Place(Base):
-    """A safe place a person could walk into (blueprint §4)."""
+    """A place a person could walk into to ask for help (blueprint §4). Never a guarantee of safety."""
 
     __tablename__ = "places"
 

@@ -12,6 +12,7 @@ os.environ["START_WORKERS"] = "0"  # tests run video jobs directly instead of in
 os.environ["SENTINEL_TOKEN"] = "test-sentinel-code"
 os.environ["SENTINEL_ENFORCE_NIGHT"] = "false"  # security tests switch these rules on explicitly
 os.environ["SENTINEL_ENFORCE_MOVING"] = "false"
+os.environ["POLICE_TOKEN"] = "test-police-code"
 
 
 @pytest.fixture

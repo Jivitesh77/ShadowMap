@@ -9,6 +9,8 @@ import { MapView, type Selection } from '../components/MapView'
 import { ReportPanel } from '../components/ReportPanel'
 import { RoutePanel, type NamedPoint, type PickTarget } from '../components/RoutePanel'
 import { EmptyState, ErrorState, Skeleton } from '../components/States'
+import { WalkActive, WalkSetup } from '../components/WalkWithMe'
+import { walkSession, type WalkSession } from '../lib/walkSession'
 import { CATEGORY_ORDER, categoryMeta, placeName } from '../lib/mapMeta'
 
 type Tab = 'route' | 'report' | 'help'
@@ -33,6 +35,22 @@ export default function WalkerPage() {
   const [tab, setTab] = useState<Tab>('route')
   const [picking, setPicking] = useState<PickTarget>(null)
   const panelRef = useRef<HTMLElement>(null)
+
+  // Walk With Me
+  const walkCfg = useApi(api.walkConfig)
+  const [session, setSession] = useState<WalkSession | null>(() => walkSession.get())
+  const [setupOpen, setSetupOpen] = useState(false)
+  const [me, setMe] = useState<LatLon | null>(null)
+  const [walkRoute, setWalkRoute] = useState<[number, number][] | null>(null)
+  useEffect(() => {
+    if (!session) return setWalkRoute(null)
+    api.walkState(session.walk_id, session.token).then((s) => setWalkRoute(s.route)).catch(() => {})
+  }, [session])
+  const onWalkPosition = useCallback((p: LatLon) => setMe(p), [])
+  const onWalkFinished = useCallback(() => {
+    setSession(null)
+    setMe(null)
+  }, [])
 
   // Route planning
   const [start, setStart] = useState<LatLon | null>(null)
@@ -232,7 +250,8 @@ export default function WalkerPage() {
                 <MapView source={data.source} streets={data.streets} places={visiblePlaces} selection={selection} onSelect={setSelection}
                   picking={picking !== null} onPick={onPick} start={start} end={end} route={route}
                   helpRoute={tab === 'help' ? help?.best_open?.geometry ?? null : null}
-                  reportPoint={tab === 'report' ? reportPoint : null} helpFrom={tab === 'help' ? helpFrom : null} />
+                  reportPoint={tab === 'report' ? reportPoint : null} helpFrom={tab === 'help' ? helpFrom : null}
+                  walkRoute={session ? walkRoute : null} me={session ? me : null} />
                 <div className="pointer-events-none absolute top-3 right-3 left-14 z-[500] flex">
                   <div className="rounded-lg bg-ink-950/90 px-3 py-1.5 text-xs text-ink-300 ring-1 ring-ink-700">
                     {pickHint ? (
@@ -258,6 +277,11 @@ export default function WalkerPage() {
                 <Skeleton className="h-5 w-2/5" />
                 <Skeleton className="h-4 w-full" />
               </div>
+            ) : session && walkCfg.data ? (
+              <WalkActive session={session} config={walkCfg.data} at={at} onPosition={onWalkPosition} onFinished={onWalkFinished} />
+            ) : setupOpen && start && end && walkCfg.data ? (
+              <WalkSetup start={start} end={end} config={walkCfg.data} onCancel={() => setSetupOpen(false)}
+                onStarted={(s) => { setSetupOpen(false); setSession(s) }} />
             ) : selection?.kind === 'street' ? (
               <StreetInfo id={selection.id} at={at} refreshKey={String(refresh)} onClose={() => setSelection(null)} onPick={setSelection} />
             ) : selectedPlace ? (
@@ -285,6 +309,11 @@ export default function WalkerPage() {
                       loading={routeLoading} error={routeError} onRetry={findRoute} places={namedPoints}
                       onSet={(w, p) => (w === 'start' ? setStart(p) : setEnd(p))} onMine={useMine}
                       locating={locating === 'start' || locating === 'end' ? locating : null} at={at} />
+                    {route && start && end && (
+                      <button onClick={() => setSetupOpen(true)} className="min-h-12 w-full rounded-xl bg-beacon-400 font-semibold text-ink-950">
+                        Start Walk With Me
+                      </button>
+                    )}
                     {!route && (
                       <div className="border-t border-ink-700 pt-5">
                         <AreaOverview data={data} onPick={setSelection} />

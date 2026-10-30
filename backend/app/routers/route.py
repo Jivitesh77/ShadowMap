@@ -117,6 +117,12 @@ def route(req: RouteRequest, db: Session = Depends(get_db)):
     if shortest["freshest_photo_age_min"] is None and safest["freshest_photo_age_min"] is None:
         notes.append("Scores come from map data only: no Sentinel photos of these streets yet.")
 
+    for seg in safest["segments"]:  # city repair ranking: how often a street is on a planned safest route
+        use = db.get(models.RouteUse, seg["street_id"]) or models.RouteUse(street_id=seg["street_id"], planned=0, walked=0)
+        use.planned = (use.planned or 0) + 1
+        db.add(use)
+    db.commit()
+
     return {
         "at": at.isoformat(timespec="minutes"),
         "start": {"requested": req.start.model_dump(), "snapped": pair.start.point, "snap_distance_m": round(pair.start.distance_m)},

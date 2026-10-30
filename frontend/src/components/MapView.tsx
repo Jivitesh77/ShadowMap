@@ -74,6 +74,8 @@ export function MapView({
   helpRoute = null,
   reportPoint = null,
   helpFrom = null,
+  walkRoute = null,
+  me = null,
 }: {
   source: MapSource
   streets: Street[]
@@ -88,6 +90,8 @@ export function MapView({
   helpRoute?: [number, number][] | null
   reportPoint?: LatLon | null
   helpFrom?: LatLon | null
+  walkRoute?: [number, number][] | null
+  me?: LatLon | null
 }) {
   const center = source.area?.center ?? [26.0804, 91.5605]
   const b = source.area?.bbox
@@ -208,6 +212,16 @@ export function MapView({
           <Polyline positions={helpRoute} interactive={false} pathOptions={{ color: '#070c16', weight: 10, opacity: 0.8 }} />
           <Polyline positions={helpRoute} interactive={false} pathOptions={{ color: '#60a5fa', weight: 5, dashArray: '8 6', lineCap: 'round' }} />
         </>
+      )}
+      {walkRoute && walkRoute.length > 1 && (
+        <>
+          <Polyline positions={walkRoute} interactive={false} pathOptions={{ color: '#070c16', weight: 11, opacity: 0.85 }} />
+          <Polyline positions={walkRoute} interactive={false} pathOptions={{ color: '#f5b83d', weight: 6, lineCap: 'round' }} />
+        </>
+      )}
+      {me && (
+        <Marker position={[me.lat, me.lon]} icon={L.divIcon({ className: '', html: '<div class="sm-live-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] })}
+          zIndexOffset={3000} interactive={false} />
       )}
       {reportPoint && <Marker position={[reportPoint.lat, reportPoint.lon]} icon={endpointIcon('R')} zIndexOffset={2000} interactive={false} />}
       {helpFrom && <Marker position={[helpFrom.lat, helpFrom.lon]} icon={endpointIcon('H')} zIndexOffset={2000} interactive={false} />}

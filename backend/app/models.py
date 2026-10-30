@@ -143,6 +143,23 @@ class Walk(Base):
     last_moved_at: Mapped[datetime | None] = mapped_column(DateTime)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # Added for Walk With Me (all nullable so existing databases upgrade safely)
+    walker_token_hash: Mapped[str | None] = mapped_column(String(64))  # only the walker's phone can confirm, end, send positions
+    start_lat: Mapped[float | None] = mapped_column(Float)
+    start_lon: Mapped[float | None] = mapped_column(Float)
+    route_length_m: Mapped[float | None] = mapped_column(Float)
+    last_moved_lat: Mapped[float | None] = mapped_column(Float)
+    last_moved_lon: Mapped[float | None] = mapped_column(Float)
+    off_route_since: Mapped[datetime | None] = mapped_column(DateTime)
+    battery_pct: Mapped[int | None] = mapped_column(Integer)
+    check_started_at: Mapped[datetime | None] = mapped_column(DateTime)  # "Are you safe?" asked at
+    check_trigger: Mapped[str | None] = mapped_column(String(20))
+    escalation: Mapped[int | None] = mapped_column(Integer, default=0)  # 0 none, 1 asked, 2 contacts, 3 police
+    contacts_alerted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    duress: Mapped[bool | None] = mapped_column(Boolean, default=False)  # never revealed to the walker's screen
+    simulated: Mapped[bool | None] = mapped_column(Boolean, default=False)  # demo: positions simulated along the route
+    events: Mapped[list | None] = mapped_column(JSON)  # timeline for contacts: [{at, kind, text}]
+
     contacts: Mapped[list["Contact"]] = relationship(back_populates="walk", cascade="all, delete-orphan")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="walk", cascade="all, delete-orphan")
 
@@ -172,6 +189,10 @@ class Alert(Base):
     status: Mapped[str] = mapped_column(String(20), default="new")  # new / acknowledged / unit_sent / resolved
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    lat: Mapped[float | None] = mapped_column(Float)  # walker position when the alert was raised
+    lon: Mapped[float | None] = mapped_column(Float)
+    history: Mapped[list | None] = mapped_column(JSON)  # [{at, status, by}]
+    resolved_reason: Mapped[str | None] = mapped_column(String(100))
 
     walk: Mapped[Walk] = relationship(back_populates="alerts")
 
@@ -207,3 +228,13 @@ class VideoJob(Base):
     # Uploaded copies hold unblurred faces and plates: deleted with the photos, 6 h after processing (by the M6 cleanup).
     # Never set for videos in assets/videos, which belong to the team and are never deleted by ShadowMap.
     file_delete_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class RouteUse(Base):
+    """How often a street was on a planned safest route or a started walk — ranks the city repair list (blueprint §11)."""
+
+    __tablename__ = "route_uses"
+
+    street_id: Mapped[int] = mapped_column(ForeignKey("streets.id"), primary_key=True)
+    planned: Mapped[int] = mapped_column(Integer, default=0)
+    walked: Mapped[int] = mapped_column(Integer, default=0)

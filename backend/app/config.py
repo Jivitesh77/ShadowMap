@@ -76,3 +76,14 @@ ORPHAN_UPLOAD_HOURS = 24  # uploaded videos never turned into a job are removed 
 # --- Gemini (route briefing now; photo analysis in M6) ---
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()  # stable, fast model (checked 2026-10-30)
 GEMINI_TIMEOUT_S = 20
+
+# --- Walk With Me (blueprint §9). Demo values are shortened, as the blueprint allows for the prototype. ---
+_WALK_REAL = {"stop_s": 180, "off_route_m": 50, "off_route_s": 30, "late_s": 600, "ask_s": 60, "contacts_to_police_s": 120}
+_WALK_DEMO = {"stop_s": 15, "off_route_m": 50, "off_route_s": 15, "late_s": 60, "ask_s": 20, "contacts_to_police_s": 30}
+WALK_TIMERS = {k: int(os.getenv(f"WALK_{k.upper()}", v)) for k, v in (_WALK_DEMO if DEMO_MODE else _WALK_REAL).items()}
+WALK_MOVE_M = 15  # moving at least this far resets the "stopped" timer
+WALK_ARRIVE_M = 40  # within this of the destination = arrived
+WALK_BATTERY_LOW = 10  # percent: contacts are told (not an alarm)
+WALK_MAX_CONTACTS = 3
+# Access code for the police dashboard (positions are shown there during alerts). Only in backend/.env.
+POLICE_TOKEN = os.getenv("POLICE_TOKEN", "").strip()

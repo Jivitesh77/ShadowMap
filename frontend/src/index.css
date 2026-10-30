@@ -136,3 +136,29 @@ body {
 .sm-picking .leaflet-interactive {
   cursor: crosshair !important;
 }
+
+/* Walk With Me markers */
+.sm-live-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: #60a5fa;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 6px rgb(96 165 250 / 0.35);
+}
+.sm-moved-dot {
+  width: 16px;
+  height: 16px;
+  margin: 4px;
+  border-radius: 9999px;
+  background: #a8b4c9;
+  border: 2px solid #fff;
+}
+.sm-alert-dot {
+  width: 20px;
+  height: 20px;
+  margin: 2px;
+  border-radius: 9999px;
+  background: var(--color-danger);
+  border: 3px solid #fff;
+}

@@ -243,6 +243,109 @@ export interface StreetObservation {
   photo_note: string
 }
 
+// ---- Walk With Me ----
+export interface WalkTimers {
+  stop_s: number
+  off_route_m: number
+  off_route_s: number
+  late_s: number
+  ask_s: number
+  contacts_to_police_s: number
+}
+export interface WalkConfig {
+  demo_mode: boolean
+  timers: WalkTimers
+  helplines: { emergency: string; women: string; police: string }
+  demo_call_number: string | null
+}
+export interface WalkerState {
+  walk_id: string
+  status: 'active' | 'checking' | 'alert' | 'arrived' | 'ended'
+  asking: boolean
+  trigger: string | null
+  check_started_utc: string | null
+  escalation: number
+  expected_arrival_utc: string | null
+  route: [number, number][]
+  dest: [number, number]
+  last: [number, number]
+  contacts: { name: string; phone: string | null }[]
+  simulated: boolean
+  timers: WalkTimers
+}
+export interface WalkEvent {
+  at: string
+  kind: string
+  text: string
+}
+export interface ContactView {
+  walker_name: string
+  walker_phone: string | null
+  status: WalkerState['status']
+  duress: boolean
+  escalation: number
+  trigger: string | null
+  started_utc: string
+  expected_arrival_utc: string | null
+  ended_utc: string | null
+  route: [number, number][] | null
+  dest: [number, number]
+  last: [number, number] | null
+  last_position_utc: string | null
+  battery_pct: number | null
+  simulated: boolean
+  events: WalkEvent[]
+  alerts: { level: string; trigger: string; status: string; created_utc: string }[]
+}
+export interface WhereAmI {
+  street: string | null
+  landmark: { name: string | null; category: string; distance_m: number } | null
+  nearest_open: { name: string | null; category: string; distance_m: number } | null
+  nearest_police: { name: string | null; distance_m: number; phone: string | null } | null
+}
+export interface PoliceAlert {
+  id: number
+  walk_id: string
+  walker_name: string
+  walker_phone: string | null
+  trigger: string
+  duress: boolean
+  status: 'new' | 'acknowledged' | 'unit_sent' | 'resolved'
+  created_utc: string
+  updated_utc: string
+  alert_position: [number, number] | null
+  live_position: [number, number] | null
+  live_position_utc: string | null
+  last_moved: [number, number] | null
+  last_moved_utc: string | null
+  route: [number, number][] | null
+  dest: [number, number] | null
+  walk_status: string
+  simulated_positions: boolean
+  contacts: string[]
+  history: { at: string; status: string; by: string }[]
+  resolved_reason: string | null
+}
+export interface RepairItem {
+  rank: number
+  street_id: number
+  name: string
+  road_class: string
+  length_m: number
+  lat: number
+  lon: number
+  osm_way_id: number
+  broken_light_reports: number
+  independent_reporters: number
+  dark_reports: number
+  nights_dark_last_7: number
+  walks_through: number
+  routes_planned_through: number
+  status: string
+  latest_dark_utc: string | null
+  evidence: { observation_id: number; captured_utc: string; sentinel: string; lighting: string | null; description: string | null; photo_available: boolean }[]
+}
+
 // ---- Sentinel ----
 export interface VideoInfo {
   duration_s: number
@@ -419,6 +522,36 @@ export const api = {
   helpPoint: (p: LatLon, at?: string) =>
     request<HelpPointResult>('/api/help-point', { method: 'POST', body: JSON.stringify({ ...p, at }) }, 30000),
   streetObservations: (id: number) => request<{ observations: StreetObservation[] }>(`/api/streets/${id}/observations`),
+  walkConfig: () => request<WalkConfig>('/api/walks/config'),
+  startWalk: (body: {
+    walker_name: string
+    walker_phone?: string
+    contacts: { name: string; phone?: string }[]
+    pin: string
+    duress_pin?: string
+    start: LatLon
+    end: LatLon
+    simulated: boolean
+  }) => request<{ walk_id: string; walker_token: string; contact_path: string; expected_arrival_utc: string }>('/api/walks', { method: 'POST', body: JSON.stringify(body) }, 30000),
+  walkState: (id: string, token: string) => request<WalkerState>(`/api/walks/${id}/state`, { headers: { 'X-Walk-Token': token } }),
+  walkPosition: (id: string, token: string, p: LatLon & { battery_pct?: number }) =>
+    request<WalkerState>(`/api/walks/${id}/position`, { method: 'POST', body: JSON.stringify(p), headers: { 'X-Walk-Token': token } }),
+  walkSafe: (id: string, token: string, pin: string) =>
+    request<WalkerState & { ok: boolean }>(`/api/walks/${id}/safe`, { method: 'POST', body: JSON.stringify({ pin }), headers: { 'X-Walk-Token': token } }),
+  walkSos: (id: string, token: string) => request<{ ok: boolean }>(`/api/walks/${id}/sos`, { method: 'POST', headers: { 'X-Walk-Token': token } }),
+  walkEnd: (id: string, token: string, pin: string) =>
+    request<{ ok: boolean }>(`/api/walks/${id}/end`, { method: 'POST', body: JSON.stringify({ pin }), headers: { 'X-Walk-Token': token } }),
+  walkNote: (id: string, token: string, target: '112' | '181' | 'police' | 'contact' | 'fake') =>
+    request<{ ok: boolean }>(`/api/walks/${id}/note`, { method: 'POST', body: JSON.stringify({ kind: 'calling', target }), headers: { 'X-Walk-Token': token } }),
+  contactView: (id: string) => request<ContactView>(`/api/walks/${id}/contact`),
+  whereAmI: (p: LatLon, at?: string) => request<WhereAmI>('/api/where-am-i', { method: 'POST', body: JSON.stringify({ ...p, at }) }),
+  policeAlerts: (code: string, scope: 'active' | 'history') =>
+    request<{ simulated: boolean; alerts: PoliceAlert[] }>(`/api/police/alerts?scope=${scope}`, { headers: { 'X-Police-Token': code } }),
+  policeStatus: (code: string, id: number, status: 'acknowledged' | 'unit_sent' | 'resolved') =>
+    request<PoliceAlert>(`/api/police/alerts/${id}/status`, { method: 'POST', body: JSON.stringify({ status }), headers: { 'X-Police-Token': code } }),
+  policeCoverage: (code: string) =>
+    request<{ streets_seen_last_hour: number; streets_in_area: number }>('/api/police/coverage', { headers: { 'X-Police-Token': code } }),
+  cityRepairs: () => request<{ generated_utc: string; items: RepairItem[]; hotspots: RepairItem[]; note: string }>('/api/city/repairs'),
   street: (id: number, at?: string) =>
     request<StreetDetail>(`/api/streets/${id}${at ? `?at=${encodeURIComponent(at)}` : ''}`),
 }

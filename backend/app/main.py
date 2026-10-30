@@ -15,6 +15,9 @@ from app.routers import route as route_router
 from app.routers import reports as reports_router
 from app.routers import sentinel as sentinel_router
 from app.routers import walker as walker_router
+from app.routers import dashboards as dashboards_router
+from app.routers import walks as walks_router
+from app.services.walk_monitor import monitor as walk_monitor
 from app.services.video_jobs import worker as video_worker
 
 
@@ -23,8 +26,10 @@ async def lifespan(_app: FastAPI):
     init_db()  # creates any missing tables
     if config.START_WORKERS:
         video_worker.start()  # background queue for night-ride videos
+        walk_monitor.start()  # Walk With Me clock (alerts even if the phone goes quiet)
     yield
     video_worker.stop()
+    walk_monitor.stop()
 
 
 app = FastAPI(title="ShadowMap API", lifespan=lifespan)
@@ -40,6 +45,8 @@ app.include_router(google_router.router)
 app.include_router(sentinel_router.router)
 app.include_router(reports_router.router)
 app.include_router(walker_router.router)
+app.include_router(walks_router.router)
+app.include_router(dashboards_router.router)
 
 
 @app.get("/")

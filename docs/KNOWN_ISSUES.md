@@ -56,3 +56,7 @@ Status values: Open · Workaround · Resolved · Accepted (stays for the demo, e
 | 48 | **Community reports are public** (so judges can report by QR) and limited per device id, which a determined person can change. | Report spam is possible. | Accepted | 5 per device per hour, no self-agreement, reports fade, newer photos outweigh them, no free text. |
 | 49 | **"Nearest safe spot" is named "Help point"** (owner rule: never call a place safe). | Wording differs from the blueprint. | Accepted | Same behaviour as blueprint §10. |
 | 50 | **Help points beyond the mapped streets** (~300 m outside the 2 km box) get no walking route. | Police/hospital 6–7 km away show straight-line distance only. | Accepted | Honest label "No walking route". |
+| 51 | **Walk With Me screens not yet clicked through on real phones** (backend sequence verified in tests and live). | UI bugs possible. | Open | Owner test plan tomorrow: walker phone + contact phone + police laptop. |
+| 52 | **DEMO_CALL_NUMBER is empty**: help-call buttons then dial nothing and say so. | No ringing phone in the demo. | Open | Put a team member's number in `backend/.env`, restart. |
+| 53 | **Route-use counts grow on every route request** (also page refreshes). | Repair ranking slightly inflated. | Accepted | Relative order still meaningful. |
+| 54 | **Walk records (names, phones, positions) are kept in the database** after a walk. | Personal data retention. | Open | Add deletion after 24 h (testing phase). |

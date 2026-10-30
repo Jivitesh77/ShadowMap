@@ -23,8 +23,10 @@ If they conflict, the implementation plan wins for *how* to build; the blueprint
 4. **Do not claim a feature works without testing it.** "Done" means its check in the implementation plan was actually run and passed. Record the evidence in `docs/SPRINT_STATUS.md`.
 5. **Do not deploy anything without asking the owner.** This includes hosting, public tunnels and pushing to GitHub.
 6. **Do not run destructive commands without asking** (`rm -rf`, `git reset --hard`, `git push --force`, dropping/deleting the database, overwriting data files).
-7. **Never call real emergency numbers in demo mode.** Help-call buttons use a team member's number while `DEMO_MODE=true`.
-8. **The AI describes places, never people.** No guessing age, gender, religion or intentions in any prompt or output.
+7. **Do not create `CLAUDE.md`.** The owner does not want it in the project; AGENTS.md is the only instruction file.
+8. **Before starting a server, check the port is free** (`ss -ltn | grep :8000`). Stop any server you started before ending your turn, or tell the owner it is still running — otherwise the owner's own start command fails with "Address already in use".
+9. **Never call real emergency numbers in demo mode.** Help-call buttons use a team member's number while `DEMO_MODE=true`.
+10. **The AI describes places, never people.** No guessing age, gender, religion or intentions in any prompt or output.
 
 ## 4. Architecture (fixed — do not add frameworks or services)
 
@@ -50,7 +52,7 @@ Do **not** add: Redux, Next.js, React Router, Docker, PostgreSQL, Redis, Celery,
 
 ```
 shadowmap/
-  AGENTS.md  CLAUDE.md  BLUEPRINT.md  README.md  .gitignore
+  AGENTS.md  BLUEPRINT.md  README.md  .gitignore
   backend/
     app/            FastAPI code (main.py, config.py, db.py, models.py, routers/, services/)
     scripts/        one-off tools (download OSM data, build graph, reset demo)
@@ -79,6 +81,8 @@ shadowmap/
 - Visual check without the Chrome extension: `google-chrome-stable --headless=new --screenshot=out.png --window-size=1440,900 --virtual-time-budget=5000 http://localhost:5173/`
 
 ## 7. Working process
+
+Schedule (owner decision, 2026-10-30): **36 h building first, then 12 h testing and fixing.** Night-ride videos may only arrive after building is finished, so features that need real footage (video mode, coloured demo map) are built and checked with test inputs during building, and verified with the real videos in the testing phase. Such features are marked "Built — real-data check pending", never "Done".
 
 1. Work one milestone at a time, in the order of `docs/IMPLEMENTATION_PLAN.md`.
 2. Before starting a milestone, mark it "In progress" in `docs/SPRINT_STATUS.md`.

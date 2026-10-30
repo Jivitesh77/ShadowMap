@@ -2,7 +2,7 @@
 
 Update this file at the start and end of every milestone. "Done" requires the Done-when check from `IMPLEMENTATION_PLAN.md` to have been run, with the evidence written below.
 
-Status values: Not started · In progress · Done (verified) · Blocked · Cut
+Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
 Last updated: 2026-10-30 — M0 done and verified. Next: M1 (map data).
 
@@ -15,7 +15,7 @@ Last updated: 2026-10-30 — M0 done and verified. Next: M1 (map data).
 | M4 | Route finder (shortest vs safest) | P1 | 3 h | Not started | |
 | M5 | Sentinel capture page | P1 | 3 h | Not started | |
 | M6 | AI analysis, live colours, blur, deletion | P1 | 4 h | Not started | Needs Gemini key |
-| M7 | Video mode | P1 | 2.5 h | Not started | Team records night videos tonight (2026-10-30) |
+| M7 | Video mode | P1 | 2.5 h | Not started | Real night videos may arrive only after building; verify in the testing phase |
 | M8 | AI route briefing + voice | P1 | 2 h | Not started | Needs Gemini key |
 | M9 | Community reports + nearest safe spot | P1 | 2 h | Not started | |
 | M10 | Walk With Me + escalation + help bar | P1 | 5 h | Not started | Needs team member's demo phone number |
@@ -46,3 +46,8 @@ Checks run (evidence):
 - Backend stopped on purpose → pages show "Server offline", red error with Retry, and "Can't check for alerts" (not a false "No alerts"); backend restarted → pages reconnected by themselves.
 
 Fixed during verification: fallback font rendered as monospace (now bundled Inter); misplaced "in development" tag; police/city panels claimed "no alerts/repairs" while offline.
+
+### 2026-10-30 — Owner decisions after M0
+- No `CLAUDE.md` in the project (owner deleted it on purpose).
+- 36 h building first, then 12 h testing/fixing. Real night videos may only be ready for the testing phase.
+- Owner hit "Address already in use" on port 8000: my test servers were still running. Stopped them; ports 8000 and 5173 confirmed free.

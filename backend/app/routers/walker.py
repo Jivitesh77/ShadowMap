@@ -7,14 +7,15 @@ from sqlalchemy.orm import Session
 
 from app import config, models
 from app.db import get_db, utcnow
+from app.rate_limit import rate_limit
 from app.routers.map import parse_at
-from app.routers.route import Point, RouteRequest, route as compute_route
+from app.routers.route import Point, RouteRequest, plan_routes
 from app.services.briefing import make_briefing, build_facts
 from app.services.geo import haversine_m
 from app.services.routing import RouteError, StreetEdge, path_length, plan
 from app.services.scoring import REPORT_EFFECTS
 from app.services import cities
-from app.services.street_state import places_at, score_streets
+from app.services.street_state import places_at, score_streets, retained_reports
 from app.routers.photos import is_public
 
 router = APIRouter(prefix="/api")
@@ -72,10 +73,11 @@ class BriefingRequest(RouteRequest):
     lang: str = Field("en", pattern="^(en|hi)$")
 
 
-@router.post("/route/briefing")
+@router.post("/route/briefing", dependencies=[Depends(rate_limit("briefing"))])
 def route_briefing(req: BriefingRequest, db: Session = Depends(get_db)):
-    """Briefing for the safest route. The route is recalculated here, so the briefing only uses server-side data."""
-    r = compute_route(RouteRequest(start=req.start, end=req.end, at=req.at, city=req.city), db)
+    """Briefing for the safest route. The route is recalculated here, so the briefing only uses server-side data.
+    It is the same route the walker already planned, so it is not counted again for the repair ranking."""
+    r = plan_routes(RouteRequest(start=req.start, end=req.end, at=req.at, city=req.city), db)
     ids = {seg["street_id"] for seg in r["safest"]["segments"]}
     names = {s.id: s.name for s in db.scalars(select(models.Street).where(models.Street.id.in_(ids))).all()}
 
@@ -89,7 +91,7 @@ def route_briefing(req: BriefingRequest, db: Session = Depends(get_db)):
                                               "sentinel": o.sentinel_label})
     reports: dict[int, list[dict]] = {}
     now = utcnow()
-    for rep in db.scalars(select(models.Report).where(models.Report.street_id.in_(ids))).all():
+    for rep in db.scalars(select(models.Report).where(models.Report.street_id.in_(ids), *retained_reports(now))).all():
         age = (now - rep.created_at).total_seconds() / 60
         if rep.kind in REPORT_EFFECTS and age <= REPORT_EFFECTS[rep.kind][1]:
             reports.setdefault(rep.street_id, []).append({"kind": rep.kind, "age_min": round(age)})
@@ -111,7 +113,7 @@ class HelpRequest(BaseModel):
 HELP_OPEN_CANDIDATES, HELP_UNKNOWN_CANDIDATES = 10, 6  # route only to the nearest places by straight line (Delhi has hundreds)
 
 
-@router.post("/help-point")
+@router.post("/help-point", dependencies=[Depends(rate_limit("help_point"))])
 def nearest_help_point(req: HelpRequest, db: Session = Depends(get_db)):
     """Nearest place open at the walk time, reached along mapped streets (blueprint §10 "nearest safe spot").
     Places with unknown hours are listed separately and never presented as open."""

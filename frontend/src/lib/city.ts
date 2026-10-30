@@ -35,9 +35,9 @@ export function switchCity(id: string) {
   window.location.assign(url.toString())
 }
 
-/** Adds ?city=… (or &city=…) to a GET path. */
-export function withCity(path: string): string {
-  const c = currentCity()
+/** Adds ?city=… (or &city=…) to a path. Uses the chosen city unless one is given; none = the server's default city. */
+export function withCity(path: string, city: string | undefined = currentCity()): string {
+  const c = city
   if (!c) return path
   return `${path}${path.includes('?') ? '&' : '?'}city=${encodeURIComponent(c)}`
 }

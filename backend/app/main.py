@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app import config, models
 from app.db import get_db, init_db, utcnow
+from app.logging_setup import setup_logging
+from app.upload_guard import UploadGuard
 from app.routers import map as map_router
 from app.routers import google_places as google_router
 from app.routers import route as route_router
@@ -36,12 +38,18 @@ async def lifespan(_app: FastAPI):
     photo_worker.stop()
 
 
-app = FastAPI(title="ShadowMap API", lifespan=lifespan)
-app.add_middleware(
+setup_logging()  # before the app starts: one format, and no trip-link secrets in any log line
+
+# The automatic API pages are for local development; hosting switches them off with API_DOCS=false (render.yaml).
+_no_api_docs = {} if config.API_DOCS else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+app = FastAPI(title="ShadowMap API", lifespan=lifespan, **_no_api_docs)
+app.add_middleware(UploadGuard)  # video upload: size, disk space and access code checked while it arrives
+app.add_middleware(  # added last = outermost, so error answers from the guard also carry CORS headers
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Retry-After"],  # browsers may read how long to wait after a 429 (app/rate_limit.py)
 )
 app.include_router(map_router.router)
 app.include_router(route_router.router)

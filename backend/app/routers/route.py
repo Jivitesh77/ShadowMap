@@ -1,12 +1,17 @@
 """POST /api/route — shortest and safest walking routes with a comparison (blueprint §8)."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app import config, models
 from app.db import get_db
+from app.rate_limit import rate_limit
 from app.routers.map import parse_at
 from app.services.geo import point_to_line_m
 from app.services.routing import RouteError, Step, StreetEdge, path_length, plan, same_path
@@ -15,6 +20,7 @@ from app.services import cities
 from app.services.street_state import PlaceAt, places_at, score_streets
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger("shadowmap.routes")
 
 
 class Point(BaseModel):
@@ -85,8 +91,44 @@ def summarise(steps: list[Step], scores: dict[int, StreetScore], streets: dict[i
     }
 
 
-@router.post("/route")
+def count_route_use(db: Session, street_ids: set[int], field: str) -> None:
+    """City repair ranking (blueprint §11): +1 `planned` or `walked` for each street, once per street.
+    One INSERT … ON CONFLICT DO UPDATE statement: the database adds 1 to the stored value itself, so simultaneous
+    requests can neither overwrite each other's count nor collide when a street's first counter row is created.
+    Street ids belong to one city, so each city's counters stay separate."""
+    if not street_ids:
+        return
+    column = getattr(models.RouteUse, field)
+    stmt = sqlite_insert(models.RouteUse).values(
+        [{"street_id": sid, "planned": int(field == "planned"), "walked": int(field == "walked")} for sid in sorted(street_ids)])
+    db.execute(stmt.on_conflict_do_update(index_elements=[models.RouteUse.street_id], set_={field: func.coalesce(column, 0) + 1}))
+
+
+def save_route_use(db: Session, street_ids: set[int], field: str) -> None:
+    """Count and commit on its own. A database that stays locked too long costs this count (logged), never the
+    route or walk the person asked for."""
+    try:
+        count_route_use(db, street_ids, field)
+        db.commit()
+    except OperationalError:
+        db.rollback()
+        log.warning("route-use counter not updated (%s, %d streets): database busy", field, len(street_ids))
+
+
+def suggested_street_ids(result: dict) -> set[int]:
+    return {seg["street_id"] for seg in result["safest"]["segments"]}
+
+
+@router.post("/route", dependencies=[Depends(rate_limit("route"))])
 def route(req: RouteRequest, db: Session = Depends(get_db)):
+    """A route request the walker made: plan it, then count it once as "planned" (only when planning succeeded)."""
+    result = plan_routes(req, db)
+    save_route_use(db, suggested_street_ids(result), "planned")
+    return result
+
+
+def plan_routes(req: RouteRequest, db: Session) -> dict:
+    """Shortest and safest route with the comparison. Writes nothing (the briefing and walk start reuse it)."""
     at = parse_at(req.at)
     city = cities.resolve(req.city)
     streets = {s.id: s for s in db.scalars(select(models.Street).where(models.Street.city == city)).all()}
@@ -122,12 +164,6 @@ def route(req: RouteRequest, db: Session = Depends(get_db)):
         )
     if shortest["freshest_photo_age_min"] is None and safest["freshest_photo_age_min"] is None:
         notes.append("Scores come from map data only: no Sentinel photos of these streets yet.")
-
-    for seg in safest["segments"]:  # city repair ranking: how often a street is on a planned safest route
-        use = db.get(models.RouteUse, seg["street_id"]) or models.RouteUse(street_id=seg["street_id"], planned=0, walked=0)
-        use.planned = (use.planned or 0) + 1
-        db.add(use)
-    db.commit()
 
     return {
         "city": city,

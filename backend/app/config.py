@@ -13,6 +13,41 @@ def _bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _api_docs() -> bool:
+    """API_DOCS: the automatic API pages /docs, /redoc and /openapi.json. Unset or empty = on (local development);
+    render.yaml sets false for hosting. Only clear "on" words keep them on: a typo switches them off, never on."""
+    value = os.getenv("API_DOCS", "").strip().lower()
+    return value == "" or value in {"1", "true", "yes", "on"}
+
+
+def _positive_int(name: str, default: int) -> int:
+    """A whole number from the environment; empty, invalid or not positive = the default."""
+    try:
+        value = int(os.getenv(name, "").strip())
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _non_negative_int(name: str, default: int) -> int:
+    """A whole number from the environment; 0 is allowed (= off); empty, invalid or negative = the default."""
+    try:
+        value = int(os.getenv(name, "").strip())
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def rate_limits_from_env() -> dict[str, int]:
+    """Requests per minute per client (agreed 2026-10-31). 0 switches a limit off."""
+    return {
+        "route": _non_negative_int("RATE_LIMIT_ROUTE_PER_MIN", 30),
+        "help_point": _non_negative_int("RATE_LIMIT_HELP_POINT_PER_MIN", 30),
+        "walk_start": _non_negative_int("RATE_LIMIT_WALK_START_PER_MIN", 5),
+        "briefing": _non_negative_int("RATE_LIMIT_BRIEFING_PER_MIN", 10),
+    }
+
+
 def _database_url() -> str:
     url = os.getenv("DATABASE_URL", "sqlite:///data/shadowmap.db")
     # Make relative SQLite paths relative to the backend folder, not to wherever the server was started.
@@ -26,6 +61,7 @@ def _database_url() -> str:
 
 DATABASE_URL = _database_url()
 DEMO_MODE = _bool("DEMO_MODE", True)
+API_DOCS = _api_docs()  # automatic API pages; off when hosted (render.yaml)
 DEMO_CALL_NUMBER = os.getenv("DEMO_CALL_NUMBER", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
@@ -44,6 +80,9 @@ MAX_DETOUR_RATIO = 1.5
 
 # --- Sentinel photos (blueprint §5, §6) ---
 PHOTO_KEEP_HOURS = 6
+# Community reports: after this many days the device id and the tapped position are removed and the report no longer
+# counts anywhere (services/retention.py). Agreed with the owner on 2026-10-30.
+REPORT_KEEP_DAYS = 30
 SNAP_RADIUS_M = 25
 VIDEO_FRAME_INTERVAL_S = 5
 # Walking speed for time estimates. Blueprint §8 example: 1.1 km = 13 min, i.e. about 5 km/h.
@@ -74,7 +113,25 @@ SENTINEL_ENFORCE_MOVING = _bool("SENTINEL_ENFORCE_MOVING", True)
 NIGHT_START_HOUR, NIGHT_END_HOUR = 18, 6  # India time
 MIN_MOVING_KMH = 5
 MAX_PLAUSIBLE_KMH = 150  # faster than this between two photos = GPS jump or spoofed position
-ORPHAN_UPLOAD_HOURS = 24  # uploaded videos never turned into a job are removed after this
+ORPHAN_UPLOAD_HOURS = 2  # uploaded videos never turned into a job are removed after this (a 1 GB disk holds only ~3 uploads)
+
+# --- Storage for Sentinel videos (agreed 2026-10-30: 1 GB persistent disk on Render, 250 MB per video) ---
+MAX_VIDEO_UPLOAD_MB = _positive_int("MAX_VIDEO_UPLOAD_MB", 250)
+MAX_VIDEO_UPLOAD_BYTES = MAX_VIDEO_UPLOAD_MB * 1024 * 1024  # largest accepted video file
+UPLOAD_FORM_OVERHEAD_BYTES = 64 * 1024  # room for the form around the file (boundary, field names)
+# Always left free on the data disk for the database, live photos and walks: uploads and frame extraction stop first.
+DISK_RESERVE_MB = _positive_int("DISK_RESERVE_MB", 150)
+# Space one video frame needs: the frame (up to ~150 KB for a portrait 640 px JPEG) plus its blurred copy. Measured
+# 2026-10-30: a noisy 1080p landscape frame is ~54 KB; this estimate is deliberately generous.
+FRAME_STORAGE_BYTES = 300 * 1024
+ORPHAN_FILE_MIN_AGE_S = 600  # frame / blurred files nothing refers to are removed only after 10 min (never mid-write)
+
+# --- Request limits for the expensive public endpoints (app/rate_limit.py) ---
+RATE_LIMITS = rate_limits_from_env()
+# How many proxies in front of the server append to X-Forwarded-For. 0 (default) = the header is ignored completely and
+# the direct connection address is used. Render: 1 (its proxy appends the real client address as the last entry).
+# Never set it higher than the real number of proxies: entries further left are written by the client and can be faked.
+TRUSTED_PROXY_HOPS = _non_negative_int("TRUSTED_PROXY_HOPS", 0)
 
 # --- Gemini (route briefing now; photo analysis in M6) ---
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()  # stable, fast model (checked 2026-10-30)

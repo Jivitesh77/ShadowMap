@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import models
+from app import config, models
 from app.db import utcnow
 from app.services.geo import point_to_line_m
 from app.services.hours import status_at
@@ -37,11 +37,19 @@ COMMUNITY_PLACE_WINDOW_H = 3  # a "seen closed/open" report describes the place 
 IST_OFFSET = timedelta(hours=5, minutes=30)
 
 
+def retained_reports(now: datetime | None = None) -> tuple:
+    """Query conditions for reports that may still be used: younger than REPORT_KEEP_DAYS and with a known time.
+    Older ones (anonymised by services/retention.py) and malformed ones without a time never count anywhere."""
+    cutoff = (now or utcnow()) - timedelta(days=config.REPORT_KEEP_DAYS)
+    return (models.Report.created_at.is_not(None), models.Report.created_at >= cutoff)
+
+
 def latest_place_reports(db: Session) -> dict[int, models.Report]:
     """Newest 'place closed' / 'place open' report for each place (blueprint §10: corrects hours until contradicted)."""
     out: dict[int, models.Report] = {}
     for r in db.scalars(select(models.Report).where(models.Report.kind.in_(["place_closed", "place_open"]),
-                                                    models.Report.place_id.is_not(None)).order_by(models.Report.created_at)).all():
+                                                    models.Report.place_id.is_not(None), *retained_reports())
+                        .order_by(models.Report.created_at)).all():
         out[r.place_id] = r
     return out
 
@@ -128,7 +136,7 @@ def score_streets(db: Session, at: datetime, city: str | None = None, now: datet
         lst.append(Photo(s, (now - o.captured_at).total_seconds() / 60, o.lighting, uncertain=o.confidence == "low"))
 
     reports: dict[int, list[ReportIn]] = {}
-    for r in db.scalars(select(models.Report).where(models.Report.street_id.is_not(None))).all():
+    for r in db.scalars(select(models.Report).where(models.Report.street_id.is_not(None), *retained_reports(now))).all():
         reports.setdefault(r.street_id, []).append(ReportIn(r.kind, (now - r.created_at).total_seconds() / 60))
 
     out = {}

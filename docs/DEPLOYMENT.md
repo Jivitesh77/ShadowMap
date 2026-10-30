@@ -28,6 +28,45 @@ Render's normal filesystem is **wiped on every deploy and restart**. SQLite stor
 5. Open the Vercel address: the header must say **Server online**. Run the [testing checklist](TESTING_CHECKLIST.md) on phones.
 6. If you later change the Vercel address, update `CORS_ORIGINS` on Render.
 
+## Storage budget (1 GB persistent disk, agreed 2026-10-30)
+
+The Render disk (`/var/data`, 1 GB) holds the database **and** all Sentinel files.
+
+| What | Where | Size | Removed |
+| --- | --- | --- | --- |
+| Uploaded video | `/var/data/videos` | **at most 250 MB** (`MAX_VIDEO_UPLOAD_MB`) | 6 h after processing; 2 h after upload if never processed |
+| Video frames | `/var/data/photos` | budgeted 300 KB per frame incl. its blurred copy (`FRAME_STORAGE_BYTES`) | 6 h after processing |
+| Blurred copies | `/var/data/photos/redacted` | inside the frame budget | with their photo (6 h) |
+| Interrupted blurring (`.tmp`) | `/var/data/photos/redacted` | small | after 10 min |
+| Upload buffer while a file arrives | system temp folder (container disk, **not** the data disk) | up to 250 MB | when the request ends |
+| Database | `/var/data/shadowmap.db` | small | — |
+
+Rules enforced by the backend:
+- An upload is refused **while it arrives** once it passes 250 MB (HTTP 413). The access code is checked before any byte is read. Nothing is kept from a refused upload.
+- An upload or a frame extraction is refused (HTTP 507 / job "failed" with a clear message) when less than **150 MB** (`DISK_RESERVE_MB`) would stay free. A job that stops for lack of space keeps nothing.
+- Example: a 2-hour ride at one frame every 2 s is 3,600 frames ≈ 1 GB and is refused up front; at every 5 s it is 1,440 frames ≈ 420 MB. Choose the ride part (start/end) to keep jobs small.
+- Abandoned uploads and frames of failed or interrupted jobs are removed by the regular cleanup (at start and every ~5 min). Files of queued/processing jobs and of kept observations are never removed by it.
+- In practice the disk fits one 250 MB video plus its frames at a time; process videos one after another.
+
+## Request limits and the client address (agreed 2026-10-31)
+
+| Endpoint | Limit per client | Setting |
+| --- | --- | --- |
+| `POST /api/route` (route planning) | 30 / minute | `RATE_LIMIT_ROUTE_PER_MIN` |
+| `POST /api/help-point` | 30 / minute | `RATE_LIMIT_HELP_POINT_PER_MIN` |
+| `POST /api/walks` (starting a walk) | 5 / minute | `RATE_LIMIT_WALK_START_PER_MIN` |
+| `POST /api/route/briefing` (AI briefing) | 10 / minute | `RATE_LIMIT_BRIEFING_PER_MIN` |
+
+- Over a limit: HTTP 429 with a clear message and a `Retry-After` header (seconds); the browser can read both (CORS exposes `Retry-After`). `0` switches a limit off.
+- **Never limited:** position updates, PIN answers, SOS, ending a walk, the trusted-contact page, maps, police and Sentinel endpoints.
+- Counts are kept **in memory**: they reset when the server restarts, and each server process counts on its own. That fits the single instance in `render.yaml`; with more instances the limits would multiply.
+- **People sharing one internet connection share one allowance** (campus Wi-Fi, one phone hotspot at a demo: 30 route requests per minute for everybody together). For a demo with many phones on one hotspot, raise `RATE_LIMIT_ROUTE_PER_MIN` and `RATE_LIMIT_HELP_POINT_PER_MIN` in the Render dashboard, or set them to 0 for the demo.
+
+**Client address behind Render's proxy.** Every request reaches the server from Render's proxy, which appends the real client address to `X-Forwarded-For`. `TRUSTED_PROXY_HOPS=1` (render.yaml) makes ShadowMap use that last, proxy-written entry only. Entries further left are written by the visitor and are ignored, so a faked header cannot dodge a limit.
+- Do **not** set uvicorn's `FORWARDED_ALLOW_IPS="*"`: uvicorn would then use the *first* (visitor-written) entry.
+- **Verify after the first deploy (not tested on Render yet):** the number of proxies Render puts in front is an assumption. If Render ever adds two entries for one visitor, everybody behind the same Render edge would share a limit (too strict, never too lax). Raising `TRUSTED_PROXY_HOPS` above the real number would make limits fakeable — never do that.
+- Locally (`./start.sh`) the default `TRUSTED_PROXY_HOPS=0` ignores the header completely.
+
 ## Backup and restore (database, files, model)
 
 Everything ShadowMap stores is in **one SQLite file** plus a few folders.
@@ -77,11 +116,17 @@ sqlite3 ~/shadowmap-backups/<file>.db "SELECT city, COUNT(*) FROM streets GROUP 
 **Rules for backups**
 - **Before every `scripts.build_map`** run and before any database change you are unsure about, make a backup.
 - A backup contains **personal data**: walker names and phone numbers of walks from the last 24 h, trip routes, PIN hashes,
-  report positions. Keep backups on the laptop only, never in git, chat or public cloud folders. ShadowMap promises to remove
+  report device ids and positions from the last 30 days. Keep backups on the laptop only, never in git, chat or public cloud folders. ShadowMap promises to remove
   walk details 24 h after a walk ends — **delete backups older than a few days** so that promise still holds.
 - Do not include `backend/.env`, `frontend/.env*` or the photo folders in a backup you share with anyone.
 - The face model is git-ignored: a host that builds from GitHub will **not** have it (photos then stay private and unscored,
   fail-closed). Before deploying, decide how the model gets into the image (see KNOWN_ISSUES #93).
+
+## Logs and API pages when hosted
+
+- `render.yaml` sets `API_DOCS=false`: `/docs`, `/redoc` and `/openapi.json` answer 404 on the public server; the app and `/api/health` are unaffected.
+- `LOG_LEVEL=INFO`. ShadowMap's log lines look like `2026-10-30 23:05:01 WARNING shadowmap.walks: walk-1a2b3c4d5e …`. A walk is identified only by that one-way fingerprint: the walk id is the trip link's secret and never appears in ShadowMap's or uvicorn's logs. Database errors hide their stored values.
+- **Not covered by ShadowMap:** Render's and Vercel's own request logs record page addresses, and the trusted contact's page address is `/trip/<walk id>`. Limit who can see those dashboards (KNOWN_ISSUES #98).
 
 ## Checked locally (without deploying)
 

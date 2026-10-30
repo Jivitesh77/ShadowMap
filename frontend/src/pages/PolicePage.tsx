@@ -2,14 +2,15 @@
 import { useEffect, useState } from 'react'
 import { api, type PoliceAlert } from '../api'
 import { useApi } from '../hooks/useApi'
+import { getCode, setCode } from '../lib/accessCodes'
 import { LiveMap } from '../components/LiveMap'
 import { ShieldIcon } from '../components/Icons'
 import { EmptyState, ErrorState, LoadingBlock } from '../components/States'
 import { Badge, PageHeader, Panel, Stat } from '../components/Ui'
 
-const KEY = 'sm-police-code'
-const getCode = () => { try { return localStorage.getItem(KEY) } catch { return null } }
-const setCode = (c: string | null) => { try { if (c) localStorage.setItem(KEY, c); else localStorage.removeItem(KEY) } catch { /* memory only */ } }
+// The control-room code is kept for this browser tab's session only (lib/accessCodes.ts).
+const getPoliceCode = () => getCode('police')
+const setPoliceCode = (c: string | null) => setCode('police', c)
 const TRIGGER: Record<string, string> = { stopped: 'Stopped, no answer', off_route: 'Off route, no answer', late: 'Late, no answer', sos: 'SOS pressed', duress: 'DURESS PIN', no_answer: 'No answer', sos_after_end: 'SOS after the walk ended', duress_after_end: 'DURESS PIN after the walk ended' }
 const STATUS: Record<PoliceAlert['status'], string> = { new: 'New', acknowledged: 'Acknowledged', unit_sent: 'Unit sent', resolved: 'Resolved' }
 const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '—')
@@ -20,7 +21,7 @@ function Gate({ onOk }: { onOk: (c: string) => void }) {
   return (
     <form className="mx-auto max-w-md space-y-3 rounded-2xl border border-ink-700 bg-ink-850 p-5" onSubmit={async (e) => {
       e.preventDefault()
-      try { await api.policeAlerts(code.trim(), 'active'); setCode(code.trim()); onOk(code.trim()) } catch (x) { setErr((x as Error).message) }
+      try { await api.policeAlerts(code.trim(), 'active'); setPoliceCode(code.trim()); onOk(code.trim()) } catch (x) { setErr((x as Error).message) }
     }}>
       <h2 className="text-lg font-semibold">Control room access code</h2>
       <p className="text-sm text-ink-300">Live positions of people in an alert are shown here. The code is set in <code>backend/.env</code> (POLICE_TOKEN).</p>
@@ -76,14 +77,15 @@ function AlertDetail({ a, code, onChanged }: { a: PoliceAlert; code: string; onC
 }
 
 export default function PolicePage() {
-  const [code, setCodeState] = useState<string | null>(getCode)
+  const [code, setCodeState] = useState<string | null>(getPoliceCode)
   const [scope, setScope] = useState<'active' | 'history'>('active')
   const [selected, setSelected] = useState<number | null>(null)
   const alerts = useApi(() => (code ? api.policeAlerts(code, scope) : Promise.resolve(null)), code ? 3000 : undefined, `${code}|${scope}`)
   const coverage = useApi(() => (code ? api.policeCoverage(code) : Promise.resolve(null)), code ? 30000 : undefined, code ?? '')
   const list = alerts.data?.alerts ?? []
   const current = list.find((a) => a.id === selected) ?? list[0]
-  useEffect(() => { if (alerts.error?.includes('access code')) { setCode(null); setCodeState(null) } }, [alerts.error])
+  useEffect(() => { if (alerts.error?.includes('access code')) { setPoliceCode(null); setCodeState(null) } }, [alerts.error])
+  const signOut = () => { setPoliceCode(null); setCodeState(null); setSelected(null) }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -98,11 +100,16 @@ export default function PolicePage() {
             <Stat label="Streets seen by Sentinels (1 h)" value={coverage.data?.streets_seen_last_hour} loading={coverage.loading} hint={coverage.data ? `of ${coverage.data.streets_in_area} in the area` : undefined} />
             <Stat label="Showing" value={null} loading={false} hint={scope === 'active' ? 'Active alerts' : 'Last 100 alerts'} />
           </div>
-          <div role="tablist" className="inline-flex rounded-xl border border-ink-700 bg-ink-900 p-1">
-            {(['active', 'history'] as const).map((s) => (
-              <button key={s} role="tab" aria-selected={scope === s} onClick={() => { setScope(s); setSelected(null) }}
-                className={`rounded-lg px-4 py-2 text-sm font-medium ${scope === s ? 'bg-beacon-400 text-ink-950' : 'text-ink-300'}`}>{s === 'active' ? 'Active' : 'History'}</button>
-            ))}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div role="tablist" className="inline-flex rounded-xl border border-ink-700 bg-ink-900 p-1">
+              {(['active', 'history'] as const).map((s) => (
+                <button key={s} role="tab" aria-selected={scope === s} onClick={() => { setScope(s); setSelected(null) }}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium ${scope === s ? 'bg-beacon-400 text-ink-950' : 'text-ink-300'}`}>{s === 'active' ? 'Active' : 'History'}</button>
+              ))}
+            </div>
+            <button onClick={signOut} className="rounded-lg border border-ink-600 px-3 py-2 text-sm font-medium text-ink-300 hover:bg-ink-800 hover:text-ink-100">
+              Sign out of the control room
+            </button>
           </div>
           {alerts.error && !alerts.data ? <ErrorState message={alerts.error} onRetry={alerts.reload} /> : alerts.loading && !alerts.data ? <LoadingBlock /> : list.length === 0 ? (
             <Panel><EmptyState icon={<ShieldIcon size={22} />} title={scope === 'active' ? 'No active alerts' : 'No alerts yet'}>Alerts appear here, newest first, when a walker does not respond to a safety check, presses SOS or enters a duress PIN. Positions are shown only while an alert is open.</EmptyState></Panel>
@@ -125,7 +132,6 @@ export default function PolicePage() {
               <Panel>{current && <AlertDetail a={current} code={code} onChanged={alerts.reload} />}</Panel>
             </div>
           )}
-          <button onClick={() => { setCode(null); setCodeState(null) }} className="text-xs text-ink-400 underline">Forget the access code on this device</button>
         </>
       )}
     </div>

@@ -7,7 +7,7 @@ from pathlib import Path
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".3gp"}
 MAX_DURATION_S = 2 * 3600
-MAX_UPLOAD_BYTES = 4 * 1024**3  # 4 GB
+# The upload size limit is config.MAX_VIDEO_UPLOAD_BYTES (250 MB by default), read when each upload arrives.
 FRAME_WIDTH = 640  # blueprint §5: photos about 640 px wide
 
 # Tags in which phones store a recording location. A single location for the whole file is not a per-frame GPS track.

@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 
 from app import config, models
 from app.db import get_db, utcnow
+from app.rate_limit import rate_limit
 from app.routers.map import parse_at
-from app.routers.route import Point, RouteRequest, route as compute_route
+from app.routers.route import Point, RouteRequest, plan_routes, save_route_use, suggested_street_ids
 from app.services import walks as W
 from app.services.geo import haversine_m, locate_on_line
 from app.services import cities
@@ -83,13 +84,13 @@ class StartWalk(BaseModel):
     city: str | None = None
 
 
-@router.post("/walks")
+@router.post("/walks", dependencies=[Depends(rate_limit("walk_start"))])  # only starting; SOS, PIN, positions are never limited
 def start_walk(req: StartWalk, db: Session = Depends(get_db)):
     if req.duress_pin and req.duress_pin == req.pin:
         raise _err(422, "same_pins", "The duress PIN must be different from your PIN.")
     if req.simulated and not config.DEMO_MODE:
         raise _err(422, "no_simulation", "Simulated walks are only allowed in demo mode.")
-    r = compute_route(RouteRequest(start=req.start, end=req.end, city=req.city), db)  # the server plans the route itself
+    r = plan_routes(RouteRequest(start=req.start, end=req.end, city=req.city), db)  # the server plans the route itself
     safest = r["safest"]
     now = utcnow()
     token = secrets.token_urlsafe(24)
@@ -107,11 +108,8 @@ def start_walk(req: StartWalk, db: Session = Depends(get_db)):
     W.add_event(walk, now, "started", f"{req.walker_name} started a {safest['distance_m']} m walk (about {safest['duration_min']} min)."
                 + (" Positions are simulated for the demo." if req.simulated else ""))
     db.add(walk)
-    for seg in safest["segments"]:  # for the city repair ranking
-        use = db.get(models.RouteUse, seg["street_id"]) or models.RouteUse(street_id=seg["street_id"], planned=0, walked=0)
-        use.walked = (use.walked or 0) + 1
-        db.add(use)
-    db.commit()
+    db.commit()  # the walk is saved first: the repair-ranking counter can never cost a walk
+    save_route_use(db, suggested_street_ids(r), "walked")
     return {"walk_id": walk.id, "walker_token": token, "contact_path": f"/trip/{walk.id}",
             "expected_arrival_utc": _iso(walk.expected_arrival_at), "route": walk.route, "timers": config.WALK_TIMERS}
 

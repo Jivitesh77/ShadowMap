@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,9 +15,10 @@ from sqlalchemy.orm import Session
 from app import config, models
 from app.db import get_db, utcnow
 from app.services.geo import haversine_m, locate_on_line
-from app.services import cities
+from app.services import cities, storage
 from app.services.routing import RouteError, trace
-from app.services.video import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, VideoError, probe
+from app.upload_guard import disk_full_detail, too_large_detail
+from app.services.video import ALLOWED_EXTENSIONS, VideoError, probe
 from app.services.video_jobs import street_edges, worker
 
 router = APIRouter(prefix="/api/sentinel")
@@ -167,15 +168,21 @@ async def upload_video(file: UploadFile = File(...)):
     # Keep the original name (made safe) after the random part, so screens can show what the user uploaded.
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(file.filename or "video").stem)[:80] or "video"
     dest = config.VIDEO_DIR / f"upload_{uuid.uuid4().hex[:12]}__{safe}{ext}"
+    # The upload guard (app/upload_guard.py) already stopped oversized or unauthorised uploads while they arrived.
+    # Here the exact file size is checked again while copying; any failure removes the partly written copy.
     size = 0
-    with dest.open("wb") as f:
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_UPLOAD_BYTES:
-                f.close()
-                dest.unlink(missing_ok=True)
-                raise _err(413, "too_large", "Videos larger than 4 GB are not supported.")
-            f.write(chunk)
+    try:
+        with dest.open("wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > config.MAX_VIDEO_UPLOAD_BYTES:
+                    raise _err(413, "too_large", too_large_detail()["message"])
+                if not storage.has_room(len(chunk)):
+                    raise _err(507, "disk_full", disk_full_detail()["message"])
+                f.write(chunk)
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        raise
     try:
         info = probe(dest)
     except VideoError as e:
@@ -277,6 +284,7 @@ def job_out(job: models.VideoJob, db: Session) -> dict:
     ).all())
     return {
         "id": job.id,
+        "city": job.city,
         "original_name": job.original_name,
         "source_kind": job.source_kind,
         "sentinel_label": job.sentinel_label,
@@ -301,18 +309,25 @@ def job_out(job: models.VideoJob, db: Session) -> dict:
     }
 
 
+def _job_in_city(db: Session, job_id: int, city: str) -> models.VideoJob:
+    """The job, only if it belongs to `city`. Another city's job answers exactly like a missing one."""
+    job = db.get(models.VideoJob, job_id)
+    if not job or job.city != city:
+        raise _err(404, "not_found", "No such video job in this city.")
+    return job
+
+
 @router.get("/videos/jobs", dependencies=PROTECTED)
-def list_jobs(db: Session = Depends(get_db)):
-    jobs = db.scalars(select(models.VideoJob).order_by(models.VideoJob.id.desc()).limit(20)).all()
-    return {"jobs": [job_out(j, db) for j in jobs]}
+def list_jobs(city: str | None = Query(None), db: Session = Depends(get_db)):
+    city = cities.resolve(city)  # no city = the default city (Guwahati), like every other endpoint
+    jobs = db.scalars(select(models.VideoJob).where(models.VideoJob.city == city)
+                      .order_by(models.VideoJob.id.desc()).limit(20)).all()
+    return {"city": city, "jobs": [job_out(j, db) for j in jobs]}
 
 
 @router.get("/videos/jobs/{job_id}", dependencies=PROTECTED)
-def get_job(job_id: int, db: Session = Depends(get_db)):
-    job = db.get(models.VideoJob, job_id)
-    if not job:
-        raise _err(404, "not_found", "No such video job.")
-    return job_out(job, db)
+def get_job(job_id: int, city: str | None = Query(None), db: Session = Depends(get_db)):
+    return job_out(_job_in_city(db, job_id, cities.resolve(city)), db)
 
 
 @router.get("/status")
@@ -329,12 +344,10 @@ def sentinel_status(db: Session = Depends(get_db)):
 
 
 @router.delete("/videos/jobs/{job_id}", dependencies=PROTECTED)
-def delete_job(job_id: int, db: Session = Depends(get_db)):
+def delete_job(job_id: int, city: str | None = Query(None), db: Session = Depends(get_db)):
     """Remove a processed video's frames and observations (e.g. it was traced wrongly). Files in assets/videos are never touched;
-    an uploaded copy in data/videos is removed."""
-    job = db.get(models.VideoJob, job_id)
-    if not job:
-        raise _err(404, "not_found", "No such video job.")
+    an uploaded copy in data/videos is removed. Only jobs of the given city (default: the default city) can be removed."""
+    job = _job_in_city(db, job_id, cities.resolve(city))
     if job.status in ("queued", "processing"):
         raise _err(409, "busy", "This video is still being processed. Wait until it finishes.")
     removed = 0

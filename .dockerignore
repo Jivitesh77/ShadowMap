@@ -1,5 +1,6 @@
 # Keep secrets, local data and footage out of the image
 **/.env
+**/*.env
 **/.venv
 backend/data
 frontend

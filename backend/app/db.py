@@ -19,7 +19,10 @@ def utcnow() -> datetime:
 
 
 def make_engine(url: str) -> Engine:
-    engine = create_engine(url, connect_args={"check_same_thread": False} if url.startswith("sqlite") else {})
+    # hide_parameters: database error messages (which end up in logs) never contain the stored values,
+    # e.g. walker names, phone numbers, positions or trip ids.
+    engine = create_engine(url, connect_args={"check_same_thread": False} if url.startswith("sqlite") else {},
+                           hide_parameters=True)
     if url.startswith("sqlite"):
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_conn, _record):

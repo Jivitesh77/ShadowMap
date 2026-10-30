@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app import config, models
+from app.logging_setup import walk_ref
 from app.services.geo import haversine_m, point_to_line_m
 
 log = logging.getLogger("shadowmap.walks")
@@ -60,21 +61,24 @@ def hash_token(token: str) -> str:
 # ---------------- safe writes ----------------
 
 class WalkConflict(Exception):
-    """The walk kept changing under us; nothing was written."""
+    """The walk kept changing under us; nothing was written. Carries only walk_ref(), never the walk id."""
 
 
 def save(db: Session, walk: models.Walk, change: Callable[[], R], attempts: int = SAVE_ATTEMPTS) -> R:
     """Apply `change` (which reads and modifies `walk`) and commit. If another writer committed a newer version of the
     walk first, roll back and apply `change` again to the newest state; a stale copy is never written over newer data."""
-    for _ in range(attempts):
+    ref = walk_ref(walk.id)  # logs never contain the walk id itself (it is the trip link's secret)
+    for attempt in range(1, attempts + 1):
         try:
             result = change()  # may already write: a query inside it flushes pending changes first (autoflush)
             db.commit()
             return result
         except StaleDataError:
             db.rollback()  # discards this attempt's changes and new alert rows, and expires `walk` so it is re-read
-            log.info("walk %s changed meanwhile; re-applying on the newest state", walk.id)
-    raise WalkConflict(walk.id)
+            if attempt < attempts:
+                log.info("%s changed meanwhile; re-applying the change to the newest state (attempt %d of %d)", ref, attempt + 1, attempts)
+    log.warning("%s still changing after %d attempts; nothing was written", ref, attempts)
+    raise WalkConflict(ref)
 
 
 # ---------------- timeline ----------------
@@ -134,9 +138,32 @@ def update_position(db: Session, walk: models.Walk, now: datetime, lat: float, l
             raise_alert(db, walk, now, "info", "battery")
             add_event(walk, now, "battery", f"{walk.walker_name}'s phone battery is at {battery_pct}%. (Not an alarm.)")
     accurate = accuracy_m is None or accuracy_m <= config.WALK_MAX_ACCURACY_M
-    if accurate and haversine_m(lat, lon, walk.dest_lat, walk.dest_lon) <= config.WALK_ARRIVE_M and walk.status in ("active",):
+    at_destination = accurate and haversine_m(lat, lon, walk.dest_lat, walk.dest_lon) <= config.WALK_ARRIVE_M
+    if at_destination and walk.status in ("active",):
         walk.status, walk.ended_at = "arrived", now
         add_event(walk, now, "arrived", f"{walk.walker_name} reached safely at {(now + timedelta(hours=5, minutes=30)).strftime('%I:%M %p').lstrip('0')}. Location sharing stopped.")
+    elif at_destination and walk.status in ("checking", "alert") and not _arrival_already_noted(walk):
+        # Agreed 2026-10-31: while "Are you safe?" is unanswered (or an SOS / duress alert is open), reaching the
+        # destination is only recorded for contacts and police. The phone may not be in the walker's hands, so it never
+        # counts as an answer: the question, the escalation clock, alerts and location sharing all continue.
+        add_event(walk, now, ARRIVAL_UNCONFIRMED,
+                  f"{walk.walker_name}'s phone reached the destination area at {(now + timedelta(hours=5, minutes=30)).strftime('%I:%M %p').lstrip('0')}, "
+                  "but “Are you safe?” has not been answered. This does not mean the walker is safe: the alert continues "
+                  "until the walker answers with the PIN.")
+
+
+ARRIVAL_UNCONFIRMED = "arrival_unconfirmed"
+# Timeline entries that start (or end) a safety episode. One arrival note per episode: repeated GPS fixes add nothing.
+_EPISODE_EVENTS = {"check", "sos", "duress", "safe"}
+
+
+def _arrival_already_noted(walk: models.Walk) -> bool:
+    for e in reversed(walk.events or []):
+        if e.get("kind") == ARRIVAL_UNCONFIRMED:
+            return True
+        if e.get("kind") in _EPISODE_EVENTS:
+            return False
+    return False
 
 
 def emergency_after_end(db: Session, walk: models.Walk, now: datetime, trigger: str) -> None:
@@ -276,4 +303,4 @@ def evaluate_all(db: Session, now: datetime) -> None:
         try:
             save(db, walk, lambda: tick(db, walk, now))
         except WalkConflict:
-            log.warning("walk %s kept changing; the clock tries again next round", walk_id)
+            log.warning("%s kept changing; the walk clock tries again next round", walk_ref(walk_id))

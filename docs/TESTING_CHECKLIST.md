@@ -5,7 +5,7 @@ Tick each box. If something fails, write what you did, what you expected and wha
 
 ## 0. Preparation (laptop)
 
-- [ ] `cd ~/Projects/shadowmap/backend && .venv/bin/pytest` → **161 passed**
+- [ ] `cd ~/Projects/shadowmap/backend && .venv/bin/pytest` → **286 passed**
 - [ ] `backend/.env` has `DEMO_MODE=true` and a team member's number in `DEMO_CALL_NUMBER`
 - [ ] Note the two codes: `grep -E "SENTINEL_TOKEN|POLICE_TOKEN" ~/Projects/shadowmap/backend/.env`
 - [ ] `./start.sh`, open http://localhost:5173 → header shows **Server online**
@@ -40,6 +40,7 @@ Tick each box. If something fails, write what you did, what you expected and wha
 - [ ] "Remove this video's photos and observations" works
 
 **Dashboards**
+- [ ] Police and Sentinel: refresh keeps you signed in; "Sign out …" returns to the code screen and signs out of that screen only; closing the browser signs out of both
 - [ ] Police: access code → "No active alerts" (or alerts) ; label "Simulated"
 - [ ] City: repair list shows your test "Dark here" report street; **Download CSV** opens in a spreadsheet
 
@@ -62,6 +63,7 @@ Tick each box. If something fails, write what you did, what you expected and wha
 - [ ] Tap **Demo: stand still** → after ~15 s the red **Are you safe?** screen appears (phone vibrates)
 - [ ] Wrong PIN → "not correct"; right PIN (1234) → back to the walk
 - [ ] Stand still again, **do not answer** → contact alerted after ~20 s, police after ~30 s more
+- [ ] Stand still until *Are you safe?* appears, **do not answer**, then let the simulation reach B → the walk does **not** end; the contact page shows "phone reached the destination area … does not mean the walker is safe" once; the alert continues until the PIN
 - [ ] Answer with **duress PIN 9999** → your screen looks normal; contact and police show **DURESS**
 - [ ] **SOS** (hold 2 s) → police dashboard shows "SOS pressed" immediately
 - [ ] "Demo: walk off route" → after ~15 s *Are you safe?* (off route)

@@ -4,17 +4,24 @@
   (they hold no faces). A photo deleted before it was analysed is marked "expired" and never scored.
 - Uploaded videos: deleted at `file_delete_at`. Videos in assets/videos belong to the team and are never touched.
 - Walks: 24 h after a walk ends, names, phone numbers, contacts, route and positions are removed.
+- Files nothing refers to any more (abandoned uploads, video frames of failed / interrupted jobs):
+  services/storage.cleanup_orphan_files, never files of queued / processing jobs or of kept observations.
+- Community reports: after REPORT_KEEP_DAYS (30) the device id is removed and the tapped position is replaced by
+  0.0 / 0.0 ("position removed": the columns cannot be empty). What the report was about stays (type, street or place,
+  time) as non-identifying history; it no longer counts anywhere (street_state.retained_reports). A report without a
+  time cannot be shown to be recent, so it is anonymised too.
 """
 
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app import config, models
+from app.services import storage
 
 WALK_KEEP_HOURS = 24
 TMP_MIN_AGE_S = 600  # a blurred copy is written as .tmp for milliseconds; older .tmp files were abandoned
@@ -31,6 +38,18 @@ def _remove_file(path: str | None, allowed_dir: Path) -> None:
                 candidate.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def anonymise_expired_reports(db: Session, now: datetime) -> int:
+    """One UPDATE, so it is all-or-nothing and safe to repeat: rows already anonymised (no device id, position 0/0)
+    are not matched again. Every city's reports follow the same rule; nothing else is touched."""
+    cutoff = now - timedelta(days=config.REPORT_KEEP_DAYS)
+    r = models.Report
+    expired = or_(r.created_at.is_(None), r.created_at < cutoff)
+    identifying = or_(r.device_id.is_not(None), r.lat.is_(None), r.lon.is_(None), r.lat != 0.0, r.lon != 0.0)
+    result = db.execute(update(r).where(expired, identifying).values(device_id=None, lat=0.0, lon=0.0)
+                        .execution_options(synchronize_session=False))
+    return result.rowcount or 0
 
 
 def run(db: Session, now: datetime) -> dict:
@@ -51,6 +70,7 @@ def run(db: Session, now: datetime) -> dict:
         j.file_delete_at = None
         j.file_path = ""
         videos += 1
+    orphans = storage.cleanup_orphan_files(db)
     tmp_removed = 0
     if config.REDACTED_DIR.is_dir():  # only this folder, only .tmp files, only if clearly abandoned
         for f in config.REDACTED_DIR.glob("*.tmp"):
@@ -61,6 +81,8 @@ def run(db: Session, now: datetime) -> dict:
             except OSError:
                 pass
     db.commit()  # files and photo rows first, so a busy walk below can never undo them
+    reports = anonymise_expired_reports(db, now)
+    db.commit()
     cutoff = now - timedelta(hours=WALK_KEEP_HOURS)
     for w in db.scalars(select(models.Walk).where(models.Walk.ended_at.is_not(None), models.Walk.ended_at <= cutoff,
                                                   models.Walk.walker_name != "(deleted)")).all():
@@ -77,4 +99,5 @@ def run(db: Session, now: datetime) -> dict:
     except StaleDataError:  # a walk changed at this moment (version check): nothing overwritten, retried next run
         db.rollback()
         walks = 0
-    return {"photos_deleted": photos, "videos_deleted": videos, "walks_anonymised": walks, "tmp_files_removed": tmp_removed}
+    return {"photos_deleted": photos, "videos_deleted": videos, "walks_anonymised": walks, "tmp_files_removed": tmp_removed,
+            "reports_anonymised": reports, "orphan_files_removed": orphans}

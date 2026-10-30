@@ -1,6 +1,7 @@
 // The ONLY place in the frontend that talks to the backend.
 import { currentCity, withCity } from './lib/city'
-import { accessHeaders } from './lib/sentinelAccess'
+import { isAccessRefusal } from './lib/accessCodes'
+import { accessHeaders, setAccessCode } from './lib/sentinelAccess'
 
 // Backend address. Empty in development (Vite forwards /api to port 8000). In production set VITE_API_BASE,
 // e.g. https://shadowmap-backend.onrender.com, and allow the frontend's address in the backend's CORS_ORIGINS.
@@ -392,6 +393,7 @@ export interface CheckedVideo {
 
 export interface VideoJob {
   id: number
+  city: string
   original_name: string
   source_kind: 'upload' | 'asset'
   sentinel_label: string
@@ -462,6 +464,8 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000, i
     if ([500, 502, 504].includes(res.status) && detail.startsWith('Server error')) {
       detail = 'Cannot reach the ShadowMap server. Check that the backend is running.'
     }
+    // A Sentinel code the server no longer accepts is forgotten, so the page asks for it again.
+    if (path.startsWith('/api/sentinel/') && isAccessRefusal(res.status, code)) setAccessCode(null)
     throw new ApiError(detail, res.status, code)
   }
   return res.json() as Promise<T>
@@ -471,6 +475,11 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 10000, i
 async function requestForm<T>(path: string, form: FormData, timeoutMs = 30000): Promise<T> {
   return request<T>(path, { method: 'POST', body: form, headers: accessHeaders() }, timeoutMs, true)
 }
+
+/** Largest video the server accepts (backend MAX_VIDEO_UPLOAD_MB, agreed 250 MB). Used for the upload box text and
+ *  for error messages only — the server enforces the limit. */
+export const VIDEO_UPLOAD_LIMIT_MB = 250
+const TOO_LARGE_MESSAGE = `This video is larger than ${VIDEO_UPLOAD_LIMIT_MB} MB, the most ShadowMap accepts. Trim it to the ride (or a shorter part of it) and upload that.`
 
 /** Uploads a video with a progress callback (0..1). fetch() cannot report upload progress, so this uses XHR. */
 function uploadVideo(file: File, onProgress: (f: number) => void): Promise<CheckedVideo> {
@@ -486,10 +495,16 @@ function uploadVideo(file: File, onProgress: (f: number) => void): Promise<Check
       } catch {
         /* not JSON */
       }
+      if (isAccessRefusal(xhr.status, body?.detail?.code)) setAccessCode(null)
       if (xhr.status >= 200 && xhr.status < 300) resolve(body)
+      else if (xhr.status === 413 && !body?.detail?.message) reject(new ApiError(TOO_LARGE_MESSAGE, 413, 'too_large')) // e.g. a proxy's own 413 page
       else reject(new ApiError(body?.detail?.message ?? `Upload failed (${xhr.status}).`, xhr.status, body?.detail?.code))
     }
-    xhr.onerror = () => reject(new ApiError('Upload failed: cannot reach the ShadowMap server.'))
+    // The server may close the connection on an oversized video before the browser reads its answer.
+    xhr.onerror = () =>
+      reject(file.size > VIDEO_UPLOAD_LIMIT_MB * 1024 * 1024
+        ? new ApiError(TOO_LARGE_MESSAGE, 413, 'too_large')
+        : new ApiError('Upload failed: cannot reach the ShadowMap server.'))
     const form = new FormData()
     form.append('file', file)
     xhr.send(form)
@@ -532,10 +547,13 @@ export const api = {
     ride_end_s?: number | null
     frame_interval_s?: number
   }) => request<VideoJob>('/api/sentinel/videos/jobs', { method: 'POST', body: JSON.stringify({ ...body, city: currentCity() }), headers: accessHeaders() }, 60000),
-  videoJobs: () => request<{ jobs: VideoJob[] }>('/api/sentinel/videos/jobs', { headers: accessHeaders() }),
-  videoJob: (id: number) => request<VideoJob>(`/api/sentinel/videos/jobs/${id}`, { headers: accessHeaders() }),
-  deleteVideoJob: (id: number) =>
-    request<{ deleted_job: number; observations_removed: number }>(`/api/sentinel/videos/jobs/${id}`, {
+  // Video jobs belong to one city: the server lists, shows and deletes only the selected city's jobs.
+  videoJobs: (city: string | undefined = currentCity()) =>
+    request<{ city: string; jobs: VideoJob[] }>(withCity('/api/sentinel/videos/jobs', city), { headers: accessHeaders() }),
+  videoJob: (id: number, city: string | undefined = currentCity()) =>
+    request<VideoJob>(withCity(`/api/sentinel/videos/jobs/${id}`, city), { headers: accessHeaders() }),
+  deleteVideoJob: (id: number, city: string | undefined = currentCity()) =>
+    request<{ deleted_job: number; observations_removed: number }>(withCity(`/api/sentinel/videos/jobs/${id}`, city), {
       method: 'DELETE',
       headers: accessHeaders(),
     }),

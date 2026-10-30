@@ -13,7 +13,7 @@ from app.routers.map import parse_at
 from app.services.geo import locate_on_line
 from app.services.scoring import REPORT_EFFECTS
 from app.services import cities
-from app.services.street_state import score_streets
+from app.services.street_state import retained_reports, score_streets
 
 router = APIRouter(prefix="/api/reports")
 
@@ -90,7 +90,7 @@ def create_report(req: ReportIn, db: Session = Depends(get_db)):
 def list_reports(street_id: int | None = Query(None), place_id: int | None = Query(None), db: Session = Depends(get_db)):
     """Active (not yet faded) reports for a street or place. Device ids are never returned."""
     now = utcnow()
-    q = select(models.Report).order_by(models.Report.created_at.desc())
+    q = select(models.Report).where(*retained_reports(now)).order_by(models.Report.created_at.desc())
     if street_id is not None:
         q = q.where(models.Report.street_id == street_id)
     if place_id is not None:

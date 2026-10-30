@@ -19,7 +19,7 @@ Specification: [BLUEPRINT.md](BLUEPRINT.md) · Progress: [docs/SPRINT_STATUS.md]
 | Gemini photo analysis, face/plate blurring, photo display (M6) | Built: local blurring (YuNet + Haar), Gemini analysis of blurred copies, fail-closed approval, 6-h deletion. Tested with synthetic images and simulated Gemini only; needs a Gemini key and real night photos. See [docs/PHOTO_PRIVACY.md](docs/PHOTO_PRIVACY.md) |
 | Walk With Me (stop / off-route / late / battery → Are you safe? → contacts → police; PIN, duress PIN, SOS, help bar, Where am I; end & stop sharing, revoke link) | **Implemented and tested** in the backend (lifecycle, escalation, access control, revocation/expiry, GPS accuracy, duplicate alerts, PIN lock-out, deletion) incl. the live background clock. **Police: implemented but simulated.** **Needs real Android/iPhone testing** (GPS, screen sleep, background) |
 | Contact trip page, police dashboard (simulated), city dashboard + CSV | Working, smoke-tested in the production build |
-| Automatic deletion (photos 6 h, uploaded videos 6 h, walk personal data 24 h after the walk) | Working, tested |
+| Automatic deletion (photos 6 h, uploaded videos 6 h, walk personal data 24 h after the walk, report device ids and positions after 30 days — see below) | Working, tested |
 
 ## Run it on your laptop
 
@@ -57,6 +57,10 @@ Full lists with comments: [backend/.env.example](backend/.env.example) and [fron
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | backend | AI briefing (and M6 photo analysis). Optional: without it a labelled data summary is used. |
 | `GOOGLE_PLACES_API_KEY` | backend | Optional extra place list (separate panel, never on the map, never stored). Costs money. |
 | `DEMO_MODE` | backend | `true`: shortened walk timers; help-call buttons ring `DEMO_CALL_NUMBER`, **never** 112/181/100. |
+| `API_DOCS` | backend | Automatic API pages `/docs`, `/redoc`, `/openapi.json`. Empty = on (local); `false` when hosted (`render.yaml`). |
+| `LOG_LEVEL` | backend | `INFO` (default), `DEBUG` or `WARNING`; warnings and errors always show. Logs never contain trip-link ids, names, phones or positions. |
+| `RATE_LIMIT_*_PER_MIN` | backend | Requests per minute per client: route 30, help point 30, walk start 5, briefing 10 (`0` = off). Over a limit: 429 + `Retry-After`. Details: docs/DEPLOYMENT.md. |
+| `TRUSTED_PROXY_HOPS` | backend | `0` locally (ignore `X-Forwarded-For`); `1` on Render. |
 | `DEMO_CALL_NUMBER` | backend | A team member's phone for demo help calls. Empty = buttons dial nothing. |
 | `SENTINEL_ENFORCE_NIGHT`, `SENTINEL_ENFORCE_MOVING` | backend | Blueprint capture rules, enforced by the server. `false` only while testing in daytime / on foot. |
 | `DATA_DIR`, `DATABASE_URL` | backend | Where the database, photos and uploads live (a persistent disk when hosted). |
@@ -107,6 +111,20 @@ Real OpenStreetMap data, downloaded once and saved in `assets/demo-data/` — th
 9. **City dashboard:** the reported street in the ranked repair list; Download CSV.
 10. Close: *"Google Maps knows the shortest way home. ShadowMap knows the safest way home, as of ten minutes ago."* Be honest: photo analysis runs only with a Gemini key, and face/plate detection has not been measured on real night photos (Indian plates especially).
 
+## What ShadowMap keeps, and for how long
+
+Cleanup runs automatically in the backend (at start and about every 5 minutes), so it also catches up after the server was off.
+
+| Data | Kept | After that |
+| --- | --- | --- |
+| Sentinel photos (original and blurred copy) | 6 hours | Files deleted; the AI's text and scores stay (no faces) |
+| Uploaded ride videos | 6 hours after processing (24 h if never used) | File deleted |
+| Walk With Me: name, phone, contacts, route, positions | Until 24 h after the walk ends | Removed; the walk record keeps only its status and times |
+| Community reports: device id and the exact tapped position | **30 days** | Device id removed, position replaced by 0.0 / 0.0 ("removed"). The type, the street or place, and the time stay as history and no longer count anywhere |
+| Community reports' effect on scores | 2 hours to 7 days depending on type | Report fades out (never longer than 30 days) |
+
+Automated tests check these rules on a test database; they do not by themselves make the app compliant with any privacy law. Backups keep data longer — delete them after a few days (docs/DEPLOYMENT.md).
+
 ## Known limitations (full list: docs/KNOWN_ISSUES.md)
 
 - **Photo analysis needs a Gemini key:** without it photos are blurred but stay private and do not affect scores. Only analysed **and** privacy-approved photos count. Conservative rule: photos with vehicles where no plate was blurred stay private; Indian plate detection is not reliable, so expect many night photos to stay private. Detection accuracy on real photos is unmeasured.
@@ -123,6 +141,6 @@ Real OpenStreetMap data, downloaded once and saved in `assets/demo-data/` — th
 ## Tests
 
 ```bash
-cd ~/Projects/shadowmap/backend && .venv/bin/pytest      # 148 automated tests
+cd ~/Projects/shadowmap/backend && .venv/bin/pytest      # 286 automated tests
 cd ~/Projects/shadowmap/frontend && npm run build        # type-check + production build
 ```

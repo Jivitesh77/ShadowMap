@@ -21,6 +21,24 @@ services:
         value: sqlite:////var/data/shadowmap.db
       - key: DEMO_MODE
         value: "true"
+      - key: API_DOCS
+        value: "false"       # hide /docs, /redoc and /openapi.json on the public server
+      - key: LOG_LEVEL
+        value: "INFO"
+      - key: MAX_VIDEO_UPLOAD_MB
+        value: "250"         # agreed: 250 MB per video on the 1 GB disk (docs/DEPLOYMENT.md "Storage budget")
+      - key: DISK_RESERVE_MB
+        value: "150"         # always left free for the database, live photos and walks
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"           # Render's proxy appends the real client address to X-Forwarded-For (verify after the first deploy: docs/DEPLOYMENT.md)
+      - key: RATE_LIMIT_ROUTE_PER_MIN
+        value: "30"
+      - key: RATE_LIMIT_HELP_POINT_PER_MIN
+        value: "30"
+      - key: RATE_LIMIT_WALK_START_PER_MIN
+        value: "5"
+      - key: RATE_LIMIT_BRIEFING_PER_MIN
+        value: "10"
       - key: SENTINEL_ENFORCE_NIGHT
         value: "true"
       - key: SENTINEL_ENFORCE_MOVING

@@ -4,7 +4,7 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-30 — M0–M11 built; M6, Walk With Me completion and the second demo city (Delhi) are uncommitted, 196 tests pass. Needs: Gemini key, real night photos, real Android/iPhone tests, deployment. Not production-ready. Earlier log entries that call M6 "not built" describe the state at that time.
+Last updated: 2026-10-31 — M0–M11 built; M6, Walk With Me completion and the second demo city (Delhi) were committed in `c62e224`. Tasks 1–8 (below) are the current uncommitted changes; 286 tests pass. Docker build not verified (Task 9). Needs: Gemini key, real night photos, real Android/iPhone tests, deployment. Not production-ready. Earlier log entries that call M6 "not built" describe the state at that time.
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
@@ -288,3 +288,60 @@ Status: **Built and verified with real OSM data. No Sentinel footage of Delhi ye
   - the drawer navigates and closes;
   - there are no console errors.
 - Screenshots were taken of both cities, the phone layout, Sentinel, the trusted-contact page and the city dashboard. The frontend build passes.
+
+### 2026-10-30 — Sentinel video-job city isolation (backend task 1; uncommitted, awaiting review)
+- `GET/DELETE /api/sentinel/videos/jobs[/{id}]` take `city` (default: Guwahati); another city's job → 404 "not found"; job responses include `city`. Access code still required first.
+- Tests: **201 passed** (5 new in `tests/test_video_jobs_cities.py`, real end-to-end jobs on a generated clip in both cities). Existing Sentinel/security tests unchanged and passing.
+- Frontend not changed (owner constraint): KNOWN_ISSUES #96 — the Sentinel page must send the city for the Delhi video list to work.
+
+### 2026-10-30 — Sentinel video jobs per city in the frontend (#96; uncommitted, awaiting review)
+- `frontend/src/api.ts`: `videoJobs`, `videoJob`, `deleteVideoJob` send the selected city; `lib/city.ts` `withCity` accepts an explicit city. `VideoSentinel.tsx`: list for the selected city only, loading skeleton, error message (keeps the last list), city-named empty state.
+- No frontend test framework exists (adding one needs owner approval). Checked instead in headless Chrome against an isolated database copy (backend 8001 / frontend 5174, stopped and removed afterwards), with one real processed job per city from a generated test clip:
+  - Delhi page lists only the Delhi job, Guwahati page only the Guwahati job;
+  - switching city with the sidebar picker reloads the page and lists the new city's job;
+  - deleting from the Delhi page sends `DELETE …/jobs/2?city=delhi`, shows the city-named empty state, and the Guwahati job is untouched;
+  - a failing list request shows "Could not refresh the list" and the list recovers; no page errors.
+- Backend 201 passed; TypeScript check and production build pass.
+
+### 2026-10-30 — Route-use counter reliability (backend task 2; uncommitted, awaiting review)
+- Root causes (reproduced by the new tests before the fix): read-modify-write increments lost counts under concurrency (40 simultaneous route requests left the first street at 8 and 11 instead of 40); two first-time writers could collide on the same new counter row; the briefing and walk start called the full route endpoint, so each also counted as a "planned" route.
+- Fix: `plan_routes` (writes nothing) is separated from counting; `count_route_use` is one atomic SQLite upsert, once per street; "planned" only on `/api/route`, "walked" only on walk start; the walk is committed before its counter; a locked database costs only the count (logged), never the route or walk. No schema change, no frontend change.
+- Tests: **214 passed** (13 new in `tests/test_route_use.py`; concurrency tests repeated 3 extra times). TypeScript check and production build pass.
+
+### 2026-10-30 — Secure logging and API docs setting (task 3; uncommitted, awaiting review)
+- New `backend/app/logging_setup.py`: one log format for ShadowMap's loggers, warnings/errors always visible, `LOG_LEVEL`; walk ids replaced by a one-way `walk_ref()` in our messages and in uvicorn's request log. Database errors hide stored values (`hide_parameters=True`).
+- `API_DOCS` setting (unset/empty = on; anything not clearly "on" = off); `render.yaml` sets `API_DOCS=false`, `LOG_LEVEL=INFO`.
+- Tests: **237 passed** (23 new in `tests/test_logging_and_docs.py`, two of them run a real uvicorn process). TypeScript check and production build pass.
+
+### 2026-10-30 — Report retention (task 4; agreed policy 30 days; uncommitted, awaiting review)
+- `config.REPORT_KEEP_DAYS = 30`. `services/retention.py` `anonymise_expired_reports`: one idempotent UPDATE clears `device_id` and sets the position to 0.0 / 0.0 for reports older than 30 days (or without a time); runs with the existing cleanup at start and every ~5 min.
+- Every reader of reports (scores, place open/closed status, briefing, reports list) ignores reports older than 30 days or without a time (`street_state.retained_reports`) — before any cleanup has run, too.
+- No schema change (positions cannot be empty, hence 0.0 / 0.0). The database already refuses reports without a time.
+- Tests: **245 passed** (8 new in `tests/test_report_retention.py`, incl. interrupted cleanup + "restart" through the real background clock). TypeScript check and production build pass. Documentation: README "What ShadowMap keeps", DEPLOYMENT backup note, KNOWN_ISSUES #91 resolved / #99 open.
+
+### 2026-10-31 — Video upload limits and storage cleanup (task 5; agreed 1 GB disk / 250 MB per video; uncommitted, awaiting review)
+- `config`: `MAX_VIDEO_UPLOAD_MB=250`, `DISK_RESERVE_MB=150`, `FRAME_STORAGE_BYTES=300 KB` (measured frame ~54 KB landscape; generous for portrait + blurred copy), `ORPHAN_UPLOAD_HOURS` 24 → 2.
+- `app/upload_guard.py` (new): access code, announced size and free space checked before the upload is read; bytes counted while arriving; 413 / 507 with clear messages. Endpoint re-checks the exact file size and removes partial files on any failure.
+- `services/storage.py` (new): free-space checks; orphan cleanup of abandoned uploads and frames of failed/interrupted jobs (never queued/processing jobs or kept observations; blurred copies left to the photo rules). Runs in the regular cleanup (start + ~5 min).
+- `video_jobs.process_job`: refuses (job failed, nothing kept) when the frames would not fit, and stops cleanly if the disk fills during extraction.
+- Tests: `tests/conftest.py` now uses a temporary DATA_DIR (tests never touch backend/data). **259 passed** (14 new in `tests/test_video_storage.py`, one with a real server streaming 6 MB against a 1 MB limit). One unexplained failure in one earlier full run (KNOWN_ISSUES #102); 7 later runs passed. TypeScript check and production build pass.
+- render.yaml: `MAX_VIDEO_UPLOAD_MB=250`, `DISK_RESERVE_MB=150`; DEPLOYMENT.md "Storage budget".
+
+### 2026-10-31 — API rate limiting (task 6; agreed limits; uncommitted, awaiting review)
+- `app/rate_limit.py` (new): in-memory sliding one-minute window per client and endpoint, thread-safe; 429 + `Retry-After`; refused attempts do not extend the wait; invalid requests count. Applied to `/api/route` (30), `/api/help-point` (30), `POST /api/walks` (5), `/api/route/briefing` (10); safety actions never limited.
+- Client address: direct connection, or with `TRUSTED_PROXY_HOPS=1` (Render) the proxy-appended last `X-Forwarded-For` entry only. CORS exposes `Retry-After`.
+- Settings: `RATE_LIMIT_*_PER_MIN`, `TRUSTED_PROXY_HOPS` (config, render.yaml, .env.example, README, DEPLOYMENT). The general test suite runs with very high limits (conftest).
+- Tests: **274 passed** (15 new in `tests/test_rate_limits.py`, one restarting a real server). TypeScript check and production build pass. No frontend change.
+
+### 2026-10-31 — Arrival while a safety prompt is active (task 7; agreed behaviour; uncommitted, awaiting review)
+- `services/walks.py` `update_position`: an accurate fix within 40 m of the destination while the walk is "checking" or "alert" adds one `arrival_unconfirmed` timeline entry per safety episode ("…does not mean the walker is safe…"); nothing else changes. Normal arrival ("active" → "arrived") and finished walks unchanged.
+- Tests: **286 passed** (12 new in `tests/test_arrival_during_prompt.py`, incl. races with PIN and SOS through the version-checked save). TypeScript check and production build pass. No frontend change.
+
+### 2026-10-31 — Police and Sentinel access codes per browser session (task 8; uncommitted, awaiting review)
+- New `frontend/src/lib/accessCodes.ts` (sessionStorage per code, one-time removal of old localStorage copies, change event); `lib/sentinelAccess.ts` uses it; `PolicePage.tsx` uses it and has "Sign out of the control room"; `SentinelPage.tsx` has "Sign out of Sentinel" and returns to its code screen when the code is cleared or refused (`api.ts` clears a refused Sentinel code).
+- Headless Chrome on an isolated copy with test codes: 19 / 19 checks (migration of an old stored code, refresh, wrong codes refused, independent sign-out both ways, city switch, refused code, no codes in 973 request URLs or the console, browser restart asks for both codes again). One bug found and fixed during the check (the code screen lost its "Not accepted" message).
+- TypeScript check and production build pass; backend unchanged (286 passed).
+
+### 2026-10-31 — Task 9: Docker build and start-up check — NOT complete
+- Docker is installed. The local image build exhausted available system memory and was interrupted (the Docker service was stopped during the FFmpeg package download). No image was built and no container was run, so the build, start-up, health check, docs switch, model/FFmpeg and storage checks are all still unverified (KNOWN_ISSUES #55).
+- No code or Dockerfile change was made.

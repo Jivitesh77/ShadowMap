@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app import config, models
 from app.db import SessionLocal, utcnow
+from app.services import storage
 from app.services.routing import RouteError, StreetEdge, point_along, trace
 from app.services.video import VideoError, extract_frame, frame_times, probe
 
@@ -55,6 +56,12 @@ def _fail(job_id: int, message: str) -> None:
         db.commit()
 
 
+def _disk_full_message(frames: int) -> str:
+    return (f"Not enough storage space for {frames} frames (about {frames * config.FRAME_STORAGE_BYTES // (1024 * 1024)} MB with "
+            "blurred copies). Choose a shorter part of the ride or a longer frame interval, or try again after older photos "
+            "have been removed (6 hours). Nothing from this video was kept.")
+
+
 def cleanup_orphan_uploads() -> list[str]:
     """Delete uploaded videos older than ORPHAN_UPLOAD_HOURS that never became a job (e.g. the user left the page)."""
     if not config.VIDEO_DIR.is_dir():
@@ -93,11 +100,15 @@ def process_job(job_id: int) -> None:
             job.route_geometry, job.route_length_m = route.geometry, round(route.length_m, 1)
 
             times = frame_times(info["duration_s"], job.frame_interval_s, start, end)
+            if not storage.has_room(len(times) * config.FRAME_STORAGE_BYTES):
+                raise VideoError("disk_full", _disk_full_message(len(times)))
             job.frames_total, job.stage = len(times), "extracting frames"
             db.commit()
 
             delete_at = utcnow() + timedelta(hours=config.PHOTO_KEEP_HOURS)
             for i, t in enumerate(times):
+                if not storage.has_room(config.FRAME_STORAGE_BYTES):  # something else filled the disk meanwhile
+                    raise VideoError("disk_full", _disk_full_message(len(times)))
                 out = frame_path(job.id, i)
                 extract_frame(Path(job.file_path), t, out)
                 fraction = (t - start) / (end - start)

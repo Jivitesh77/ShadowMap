@@ -1,8 +1,9 @@
 // Video mode: turn a recorded night ride into street observations (blueprint §5).
 // Frame positions come from the route traced here, never from invented GPS.
 import { useEffect, useState } from 'react'
-import { api, ApiError, type CheckedVideo, type VideoJob } from '../api'
+import { api, ApiError, VIDEO_UPLOAD_LIMIT_MB, type CheckedVideo, type VideoJob } from '../api'
 import { useApi } from '../hooks/useApi'
+import { currentCity } from '../lib/city'
 import { formatDistance } from '../lib/mapMeta'
 import { SENTINEL_LABELS } from './LiveSentinel'
 import { EmptyState, ErrorState, LoadingBlock, Skeleton } from './States'
@@ -73,8 +74,12 @@ function JobCard({ job, onRemove }: { job: VideoJob; onRemove: (id: number) => v
 
 export function VideoSentinel() {
   const map = useApi(() => api.map())
+  const areaName = map.data?.source.area?.name ?? null
   const assets = useApi(api.assetVideos)
   const [jobs, setJobs] = useState<VideoJob[]>([])
+  const [jobsLoaded, setJobsLoaded] = useState(false)
+  const [jobsError, setJobsError] = useState<string | null>(null)
+  const city = currentCity() // fixed for this page load: switching city reloads the page, so the list is fetched again
   const [video, setVideo] = useState<CheckedVideo | null>(null)
   const [checking, setChecking] = useState(false)
   const [uploadPct, setUploadPct] = useState<number | null>(null)
@@ -90,15 +95,18 @@ export function VideoSentinel() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Poll jobs while any is queued or processing.
+  // The selected city's jobs, refreshed every 1.5 s so queued / processing jobs show progress.
   useEffect(() => {
     let stop = false
     const load = async () => {
       try {
-        const r = await api.videoJobs()
-        if (!stop) setJobs(r.jobs)
-      } catch {
-        /* shown via other errors; keep last list */
+        const r = await api.videoJobs(city)
+        if (stop) return
+        setJobs(r.jobs)
+        setJobsLoaded(true)
+        setJobsError(null)
+      } catch (e) {
+        if (!stop) setJobsError((e as Error).message) // the last list stays visible; the next round retries
       }
     }
     load()
@@ -107,7 +115,7 @@ export function VideoSentinel() {
       stop = true
       clearInterval(id)
     }
-  }, [])
+  }, [city])
 
   // Preview the traced path whenever points change.
   useEffect(() => {
@@ -180,7 +188,7 @@ export function VideoSentinel() {
       setPoints([])
       setRideStart('')
       setRideEnd('')
-      setJobs((await api.videoJobs()).jobs)
+      setJobs((await api.videoJobs(city)).jobs)
     } catch (e) {
       setSubmitError((e as Error).message)
     } finally {
@@ -191,10 +199,14 @@ export function VideoSentinel() {
   const remove = async (id: number) => {
     if (!window.confirm('Remove all photos and observations from this video? The video file itself is kept.')) return
     try {
-      await api.deleteVideoJob(id)
-      setJobs((await api.videoJobs()).jobs)
+      await api.deleteVideoJob(id, city)
     } catch (e) {
       setSubmitError((e as Error).message)
+    }
+    try {
+      setJobs((await api.videoJobs(city)).jobs) // refresh either way: a job that is already gone disappears
+    } catch {
+      /* the regular refresh shows the error */
     }
   }
 
@@ -238,7 +250,7 @@ export function VideoSentinel() {
             </div>
             <label className="flex cursor-pointer flex-col justify-center rounded-xl border border-dashed border-ink-600 p-3 text-center hover:bg-ink-800">
               <span className="text-sm text-ink-100">Upload a video</span>
-              <span className="text-xs text-ink-400">MP4, MOV, MKV, WEBM, AVI or 3GP · up to 4 GB</span>
+              <span className="text-xs text-ink-400">MP4, MOV, MKV, WEBM, AVI or 3GP · up to {VIDEO_UPLOAD_LIMIT_MB} MB</span>
               <input type="file" accept="video/*,.mkv,.3gp" className="sr-only" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
             </label>
           </div>
@@ -326,9 +338,15 @@ export function VideoSentinel() {
       </div>
 
       <aside className="space-y-3 rounded-2xl border border-ink-700 bg-ink-850 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-300">Processing queue</h2>
-        {jobs.length === 0 ? (
-          <EmptyState icon={<CameraIcon size={22} />} title="No videos processed yet">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-300">Processing queue</h2>
+          {areaName && <p className="text-xs text-ink-400">Videos of {areaName} only — switch the demo area to see another city's.</p>}
+        </div>
+        {jobsError && <ErrorState title={jobsLoaded ? 'Could not refresh the list' : 'Could not load the video list'} message={jobsError} />}
+        {!jobsLoaded ? (
+          !jobsError && <Skeleton className="h-24 w-full" />
+        ) : jobs.length === 0 ? (
+          <EmptyState icon={<CameraIcon size={22} />} title={areaName ? `No videos processed for ${areaName} yet` : 'No videos processed yet'}>
             Processing runs in the background, one video at a time. You can keep using ShadowMap meanwhile.
           </EmptyState>
         ) : (

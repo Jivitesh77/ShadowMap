@@ -77,6 +77,9 @@ Rules enforced by the backend:
 - Frontend (`frontend/vercel.json`): the same basic headers; camera and location allowed for the app's own origin only.
   **No Content-Security-Policy yet** — add it after deployment, when the backend and tile addresses are known, and check
   the map, photos and API calls in a browser before keeping it.
+- One-container hosting: website pages (everything outside `/api` and `/ws`) get the frontend's headers from the backend
+  instead (camera/location for this site only, framing only by this site and huggingface.co). Every map's tiles send
+  `Referrer-Policy: strict-origin` (site address only), because OpenStreetMap blocks tile requests without a Referer.
 - `/api/health` reports `database`, `video_tools` (FFmpeg), `face_blurring` (model loaded), `workers` (walk clock, video and
   photo queues alive) and `gemini_configured`. `status` is "degraded" if the database or the walk clock is down.
 
@@ -162,6 +165,9 @@ sqlite3 ~/shadowmap-backups/<file>.db "SELECT city, COUNT(*) FROM streets GROUP 
 
 ## Hugging Face Spaces (one container, added 2026-10-31)
 
+**Not used:** on 2026-10-31 Hugging Face refused to create the Space (402: Docker Spaces need a paid PRO plan). The
+same Dockerfile runs on Render's free plan (next section).
+
 `Dockerfile` in the project root builds the React app (Node 20) and runs the backend (Python 3.12, FFmpeg) in **one**
 container on port 7860. The backend serves the built app from `FRONTEND_DIST` after all API routes; unknown `/api/...`
 addresses stay JSON 404s. The database is **built fresh from `assets/demo-data`** inside the image — the laptop's
@@ -175,4 +181,5 @@ Hugging Face now needs a paid PRO plan for Docker Spaces, so the free option is 
 the root `Dockerfile` (it listens on Render's `PORT`). Free limits: 512 MB RAM, 0.1 CPU, sleeps after 15 min without
 visitors (first visit then takes about a minute), and **all data (walks, reports, photos) is wiped on every restart or
 sleep** — the map is rebuilt from `assets/demo-data` each time. `render.yaml` (paid, with a disk) is unchanged.
-Environment: `GEMINI_API_KEY` (secret), `TRUSTED_PROXY_HOPS=1`; optional `SENTINEL_TOKEN`, `POLICE_TOKEN`.
+Environment: `GEMINI_API_KEY` (secret), `TRUSTED_PROXY_HOPS=1`. The Dockerfile sets `OPEN_ACCESS=true` (no access
+codes); for codes set `OPEN_ACCESS=false` plus `SENTINEL_TOKEN` and `POLICE_TOKEN`. Health check path: `/api/health`.

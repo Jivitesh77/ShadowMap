@@ -12,7 +12,7 @@ app_port: 7860
 A showcase **prototype** of a night-safety map for **IIIT Guwahati and the surrounding area**.
 It colours streets by how safe they look at night, compares the shortest and the safest walking route, explains the route in plain words (English or Hindi), lets a trusted contact follow a walk live, and escalates to a (simulated) police dashboard if the walker stops answering.
 
-> **This is not production software.** It is a student prototype for a showcase. It has not been security-audited by a third party, has no user accounts, uses shared access codes, and the police integration is simulated. Do not rely on it for anyone's real safety.
+> **This is not production software.** It is a student prototype for a showcase. It has not been security-audited by a third party, has no user accounts, the hosted demo has **no access codes at all** (`OPEN_ACCESS=true`: anyone with the link can use Sentinel and see the police dashboard), and the police integration is simulated. Do not rely on it for anyone's real safety.
 
 Specification: [BLUEPRINT.md](BLUEPRINT.md) · Progress: [docs/SPRINT_STATUS.md](docs/SPRINT_STATUS.md) · Known issues: [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) · Map data gaps: [docs/DATA_GAPS.md](docs/DATA_GAPS.md) · Final audit: [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md) · Manual tests: [docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md) · Deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
@@ -54,6 +54,13 @@ cd ~/Projects/shadowmap
 Open **http://localhost:5173** (this laptop only). `Ctrl + C` stops everything.
 For phones on the same Wi-Fi, see [docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md) section 0 (camera and GPS still need https).
 
+## Hosted version (one container)
+
+The root `Dockerfile` builds the website and runs the backend in **one** container; the backend serves both the API and
+the website. It runs on Render's **free** plan, built from GitHub `master` (Hugging Face needs a paid plan for this).
+A fresh map database is built inside the container — the laptop's database (walks, contacts) is never uploaded.
+The Gemini key is set in the Render dashboard, never in git. Steps and limits: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ## Settings (environment variables)
 
 Secrets live **only** in `backend/.env` (git-ignored) or in the hosting dashboard — never in frontend code, chat or git.
@@ -61,8 +68,10 @@ Full lists with comments: [backend/.env.example](backend/.env.example) and [fron
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `SENTINEL_TOKEN` | backend | Access code for the Sentinel page (photos, videos, rider routes). Required. |
-| `POLICE_TOKEN` | backend | Access code for the police dashboard. Required. |
+| `OPEN_ACCESS` | backend | `true` = Sentinel and police dashboard open to everyone, no codes (prototype; owner decision 2026-10-31; set in the root `Dockerfile`). `false` = the two codes below are required. |
+| `SENTINEL_TOKEN` | backend | Access code for the Sentinel page (photos, videos, rider routes). Needed only when `OPEN_ACCESS=false`. |
+| `POLICE_TOKEN` | backend | Access code for the police dashboard. Needed only when `OPEN_ACCESS=false`. |
+| `FRONTEND_DIST` | backend | Folder with the built website; the backend then serves it too (one-container hosting). Empty locally. |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | backend | AI briefing (and M6 photo analysis). Optional: without it a labelled data summary is used. |
 | `GOOGLE_PLACES_API_KEY` | backend | Optional extra place list (separate panel, never on the map, never stored). Costs money. |
 | `DEMO_MODE` | backend | `true`: shortened walk timers; help-call buttons ring `DEMO_CALL_NUMBER`, **never** 112/181/100. |
@@ -79,7 +88,7 @@ Full lists with comments: [backend/.env.example](backend/.env.example) and [fron
 | `VITE_API_BASE` | frontend | Backend address when hosted (empty locally). |
 | `VITE_TILE_URL`, `VITE_TILE_ATTRIBUTION` | frontend | Optional other tile server (never Google tiles). |
 
-Show an access code: `grep SENTINEL_TOKEN ~/Projects/shadowmap/backend/.env` (or `POLICE_TOKEN`). Changes to `.env` need a restart of `./start.sh`.
+With `OPEN_ACCESS=false`, show an access code: `grep SENTINEL_TOKEN ~/Projects/shadowmap/backend/.env` (or `POLICE_TOKEN`). Changes to `.env` need a restart of `./start.sh`.
 
 ## Map data
 
@@ -145,8 +154,9 @@ Automated tests check these rules on a test database; they do not by themselves 
 - **Anyone holding a trip link can watch that walk** while it runs (no login). The walker can end it and switch the link off at once.
 - **Video positions are estimated** along the traced route (steady speed), not GPS.
 - **Phones need https** for camera and GPS. Over plain http use the *simulated walk*.
-- **Shared access codes**, public community reports (limited per device), one server process with SQLite.
-- Not tested yet: real night videos, real Gemini, real Android/iPhone, the Docker image build, a real hosted deployment.
+- **No access codes in the hosted demo** (`OPEN_ACCESS=true`): anyone with the link sees the police dashboard (live positions during alerts) and can upload to Sentinel. Use demo data only. Public community reports (limited per device), one server process with SQLite.
+- **Hosted on Render's free plan:** sleeps after 15 min without visitors (first visit then takes about a minute) and **erases walks, reports and photos on every sleep or restart**; the map is rebuilt each time.
+- Not tested yet: real night videos, real Gemini, real Android/iPhone. The hosted map tiles fix (OpenStreetMap "Access blocked") is not yet confirmed in a browser.
 
 ## Tests
 

@@ -78,7 +78,10 @@ function AlertDetail({ a, code, onChanged }: { a: PoliceAlert; code: string; onC
 }
 
 export default function PolicePage() {
-  const [code, setCodeState] = useState<string | null>(getPoliceCode)
+  const [saved, setCodeState] = useState<string | null>(getPoliceCode)
+  const health = useApi(api.health)
+  const open = health.data?.open_access === true // prototype: no access code on this server (the header is ignored)
+  const code = saved ?? (open ? 'open-access' : null)
   const [scope, setScope] = useState<'active' | 'history'>('active')
   const [selected, setSelected] = useState<number | null>(null)
   const alerts = useApi(() => (code ? api.policeAlerts(code, scope) : Promise.resolve(null)), code ? 3000 : undefined, `${code}|${scope}`)
@@ -93,7 +96,7 @@ export default function PolicePage() {
       <PageHeader eyebrow="Operations" title="Police control room"
         description="Alerts from walkers who did not answer “Are you safe?”, pressed SOS or entered a duress PIN — with live position, route and where they last moved."
         aside={<Badge tone="warn">Simulated — not connected to any police system</Badge>} />
-      {!code ? <Gate onOk={setCodeState} /> : (
+      {!code ? (health.loading ? null : <Gate onOk={setCodeState} />) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat label="Open alerts" value={scope === 'active' ? list.length : null} loading={alerts.loading && !alerts.data} />
@@ -109,9 +112,11 @@ export default function PolicePage() {
                   className={`rounded-lg px-4 py-2 text-sm font-medium ${scope === s ? 'bg-beacon-400 text-ink-950' : 'text-ink-300'}`}>{s === 'active' ? 'Active' : 'History'}</button>
               ))}
             </div>
-            <button onClick={signOut} className="rounded-lg border border-ink-600 px-3 py-2 text-sm font-medium text-ink-300 hover:bg-ink-800 hover:text-ink-100">
-              Sign out of the control room
-            </button>
+            {!open && (
+              <button onClick={signOut} className="rounded-lg border border-ink-600 px-3 py-2 text-sm font-medium text-ink-300 hover:bg-ink-800 hover:text-ink-100">
+                Sign out of the control room
+              </button>
+            )}
           </div>
           {alerts.error && !alerts.data ? <ErrorState message={alerts.error} onRetry={alerts.reload} /> : alerts.loading && !alerts.data ? <LoadingBlock /> : list.length === 0 ? (
             <Panel><EmptyState icon={<ShieldIcon size={22} />} title={scope === 'active' ? 'No active alerts' : 'No alerts yet'}>Alerts appear here, newest first, when a walker does not respond to a safety check, presses SOS or enters a duress PIN. Positions are shown only while an alert is open.</EmptyState></Panel>

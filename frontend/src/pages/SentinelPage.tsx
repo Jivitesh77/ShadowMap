@@ -60,6 +60,8 @@ export default function SentinelPage() {
     return () => window.removeEventListener(ACCESS_CHANGED, sync)
   }, [])
   const status = useApi(api.sentinelStatus, 5000)
+  const health = useApi(api.health)
+  const open = health.data?.open_access === true // prototype: no access code on this server
   const pending = status.data?.observations_by_analysis.pending ?? 0
 
   return (
@@ -77,8 +79,8 @@ export default function SentinelPage() {
         }
       />
 
-      {!unlocked ? (
-        <AccessGate onOk={() => setUnlocked(true)} />
+      {!unlocked && !open ? (
+        health.loading ? null : <AccessGate onOk={() => setUnlocked(true)} />
       ) : (
       <>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -102,9 +104,11 @@ export default function SentinelPage() {
             </button>
           ))}
         </div>
-        <button onClick={() => setAccessCode(null)} className="rounded-lg border border-ink-600 px-3 py-2 text-sm font-medium text-ink-300 hover:bg-ink-800 hover:text-ink-100">
-          Sign out of Sentinel
-        </button>
+        {!open && (
+          <button onClick={() => setAccessCode(null)} className="rounded-lg border border-ink-600 px-3 py-2 text-sm font-medium text-ink-300 hover:bg-ink-800 hover:text-ink-100">
+            Sign out of Sentinel
+          </button>
+        )}
       </div>
 
       {status.data && !status.data.ai_configured && (

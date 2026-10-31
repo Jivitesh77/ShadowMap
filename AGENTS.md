@@ -105,6 +105,7 @@ Map and place rules (owner decisions, 2026-10-30):
 
 Sentinel security rules (audit 2026-10-30, `docs/SECURITY_AUDIT_M05_M07.md`):
 - Every `/api/sentinel/*` endpoint except `/status` needs the access code (`SENTINEL_TOKEN`, header `X-Sentinel-Token`). New Sentinel endpoints must use `dependencies=PROTECTED`.
+- Owner decision 2026-10-31: for the prototype, `OPEN_ACCESS=true` (set in the root `Dockerfile`) opens Sentinel and the police dashboard to everyone. New endpoints still use `PROTECTED` / `POLICE`, so turning the switch off restores the codes.
 - Night and moving rules are enforced by the server, not only the browser. Never trust the browser alone for a rule.
 - Photos and videos are never served without blurring (M6). `assets/videos/` is git-ignored and never modified.
 - A failed job must leave nothing half-done. Every stored photo/video has a delete time, enforced by `services/retention.py` (walk personal data: 24 h after the walk).

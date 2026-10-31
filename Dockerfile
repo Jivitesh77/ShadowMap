@@ -31,6 +31,7 @@ RUN python -m scripts.build_map --all --if-empty && chmod -R 777 /app
 
 ENV FRONTEND_DIST=/app/frontend/dist \
     DEMO_MODE=true \
+    OPEN_ACCESS=true \
     API_DOCS=false \
     PYTHONUNBUFFERED=1
 EXPOSE 7860

@@ -31,6 +31,8 @@ def _iso(t):
 
 def require_police(x_police_token: str | None = Header(None)) -> None:
     """Positions of people in an alert are only for the (simulated) control room."""
+    if config.OPEN_ACCESS:  # prototype: open to everyone (config.py)
+        return
     if not config.POLICE_TOKEN:
         raise _err(503, "no_access_code", "The police dashboard is switched off: no access code is set (POLICE_TOKEN in backend/.env).")
     if not x_police_token:

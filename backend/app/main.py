@@ -87,6 +87,7 @@ def health(db: Session = Depends(get_db)):
         "status": "ok" if database == "ok" and (not isinstance(workers, dict) or workers["walk_clock"]) else "degraded",
         "database": database,
         "demo_mode": config.DEMO_MODE,
+        "open_access": config.OPEN_ACCESS,  # Sentinel and police dashboard without access codes
         "gemini_configured": bool(config.GEMINI_API_KEY),
         "video_tools": "ok" if not missing_video_tools() else "missing",
         "face_blurring": blurring,

@@ -36,6 +36,8 @@ def _video_status(e: VideoError) -> int:
 
 def require_access(x_sentinel_token: str | None = Header(None)) -> None:
     """Sentinel data (photos, videos, rider routes) is only for people with the access code from backend/.env."""
+    if config.OPEN_ACCESS:  # prototype: open to everyone (config.py)
+        return
     if not config.SENTINEL_TOKEN:
         raise _err(503, "no_access_code", "Sentinel is switched off: no access code is set on the server (SENTINEL_TOKEN in backend/.env).")
     if not x_sentinel_token:

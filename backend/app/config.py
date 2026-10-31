@@ -160,6 +160,9 @@ WALK_BATTERY_LOW = 10  # percent: contacts are told (not an alarm)
 WALK_MAX_CONTACTS = 3
 # Access code for the police dashboard (positions are shown there during alerts). Only in backend/.env.
 POLICE_TOKEN = os.getenv("POLICE_TOKEN", "").strip()
+# Prototype switch (owner decision 2026-10-31): OPEN_ACCESS=true opens Sentinel and the police dashboard to everyone,
+# no access codes. Off unless set; the one-container Dockerfile sets it. Never use for real people's data.
+OPEN_ACCESS = _bool("OPEN_ACCESS", False)
 
 # --- M6: photo analysis and privacy ---
 REDACTED_DIR = PHOTO_DIR / "redacted"  # blurred copies; the ONLY images ever served (and only when approved)

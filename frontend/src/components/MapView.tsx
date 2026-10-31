@@ -126,6 +126,9 @@ export function MapView({
         url={tileProvider.url}
         attribution={tileProvider.attribution}
         maxZoom={19}
+        // OpenStreetMap refuses tiles without a Referer; the page itself sends none (no-referrer), so the tiles send
+        // only the site's address (never the page path, which can hold a trip link).
+        referrerPolicy="strict-origin"
       />
       <FitArea source={source} />
       <ExposeForTests />

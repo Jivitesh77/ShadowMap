@@ -50,3 +50,16 @@ def test_built_app_is_served_after_the_api(tmp_path, monkeypatch):
     assert api.json()["database"] == "ok"  # API routes win over the app
     assert missing_api.status_code == 404 and missing_api.headers["content-type"] == "application/json"
     assert "no" != outside.text and "id=root" in outside.text
+
+
+def test_open_access_opens_sentinel_and_police_without_codes(monkeypatch):
+    monkeypatch.setattr(config, "OPEN_ACCESS", True)
+    with TestClient(app) as client:
+        assert client.get("/api/health").json()["open_access"] is True
+        assert client.get("/api/police/alerts").status_code == 200
+        assert client.get("/api/police/coverage").status_code == 200
+        assert client.get("/api/sentinel/videos/jobs").status_code == 200
+    monkeypatch.setattr(config, "OPEN_ACCESS", False)
+    monkeypatch.setattr(config, "POLICE_TOKEN", "x")
+    with TestClient(app) as client:
+        assert client.get("/api/police/alerts").status_code == 401  # codes still enforced when the switch is off

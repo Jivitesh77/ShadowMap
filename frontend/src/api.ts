@@ -13,6 +13,7 @@ export interface Health {
   status: 'ok' | 'degraded'
   database: 'ok' | 'error'
   demo_mode: boolean
+  open_access?: boolean
   gemini_configured: boolean
   server_time_utc: string
 }

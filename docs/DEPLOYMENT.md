@@ -168,3 +168,11 @@ addresses stay JSON 404s. The database is **built fresh from `assets/demo-data`*
 `backend/data/shadowmap.db` (walks, contacts, alerts) is never uploaded. Space data is lost on every restart/rebuild.
 Secrets (`GEMINI_API_KEY`, optionally `SENTINEL_TOKEN`, `POLICE_TOKEN`) are set as **Space secrets**, never in files.
 Without `SENTINEL_TOKEN` / `POLICE_TOKEN` the Sentinel writes and the police dashboard stay locked (safe default).
+
+## Render free plan with the same one-container Dockerfile (added 2026-10-31)
+
+Hugging Face now needs a paid PRO plan for Docker Spaces, so the free option is a Render **Free** web service built from
+the root `Dockerfile` (it listens on Render's `PORT`). Free limits: 512 MB RAM, 0.1 CPU, sleeps after 15 min without
+visitors (first visit then takes about a minute), and **all data (walks, reports, photos) is wiped on every restart or
+sleep** — the map is rebuilt from `assets/demo-data` each time. `render.yaml` (paid, with a disk) is unchanged.
+Environment: `GEMINI_API_KEY` (secret), `TRUSTED_PROXY_HOPS=1`; optional `SENTINEL_TOKEN`, `POLICE_TOKEN`.

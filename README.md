@@ -12,6 +12,10 @@ app_port: 7860
 A showcase **prototype** of a night-safety map for **IIIT Guwahati and the surrounding area**.
 It colours streets by how safe they look at night, compares the shortest and the safest walking route, explains the route in plain words (English or Hindi), lets a trusted contact follow a walk live, and escalates to a (simulated) police dashboard if the walker stops answering.
 
+**Who we are:** first-year engineering students. ShadowMap is our **idea**, shown as a working prototype: the map,
+safest route, community reports, Walk With Me and the dashboards run today. Live rider photos and night-ride videos
+(Sentinel) are part of the idea but **not used in this demo** — see [What needs support](#what-needs-support-to-build).
+
 > **This is not production software.** It is a student prototype for a showcase. It has not been security-audited by a third party, has no user accounts, the hosted demo has **no access codes at all** (`OPEN_ACCESS=true`: anyone with the link can use Sentinel and see the police dashboard), and the police integration is simulated. Do not rely on it for anyone's real safety.
 
 Specification: [BLUEPRINT.md](BLUEPRINT.md) · Progress: [docs/SPRINT_STATUS.md](docs/SPRINT_STATUS.md) · Known issues: [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) · Map data gaps: [docs/DATA_GAPS.md](docs/DATA_GAPS.md) · Final audit: [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md) · Manual tests: [docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md) · Deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
@@ -24,11 +28,25 @@ Specification: [BLUEPRINT.md](BLUEPRINT.md) · Progress: [docs/SPRINT_STATUS.md]
 | Street safety scores, shortest vs safest route (Dijkstra), comparison | Working, tested |
 | Community reports (change scores and routes), nearest help point | Working, tested |
 | Route briefing EN/HI + read aloud | Working as a **data summary**; the Gemini-written version is tested only with simulated answers (no key yet) |
-| Sentinel live photos + video mode (FFmpeg, background queue) | Working with generated test clips; **owner's night videos not yet run**; live camera not yet tried on a real phone. Without FFmpeg the server says "video mode unavailable" (503) and everything else keeps working; without a Gemini key the page says photos stay blurred and private |
-| Gemini photo analysis, face/plate blurring, photo display (M6) | Built: local blurring (YuNet + Haar), Gemini analysis of blurred copies, fail-closed approval, 6-h deletion. Tested with synthetic images and simulated Gemini only; needs a Gemini key and real night photos. See [docs/PHOTO_PRIVACY.md](docs/PHOTO_PRIVACY.md) |
+| Sentinel live photos + video mode (FFmpeg, background queue) | **Concept preview — not used in the demo.** Screens built and checked only with generated test clips; **owner's night videos not yet run**; live camera not yet tried on a real phone. Without FFmpeg the server says "video mode unavailable" (503) and everything else keeps working; without a Gemini key the page says photos stay blurred and private |
+| Gemini photo analysis, face/plate blurring, photo display (M6) | **Concept preview — not used in the demo.** Built: local blurring (YuNet + Haar), Gemini analysis of blurred copies, fail-closed approval, 6-h deletion. Tested with synthetic images and simulated Gemini only; needs a Gemini key and real night photos. See [docs/PHOTO_PRIVACY.md](docs/PHOTO_PRIVACY.md) |
 | Walk With Me (stop / off-route / late / battery → Are you safe? → contacts → police; PIN, duress PIN, SOS, help bar, Where am I; end & stop sharing, revoke link) | **Implemented and tested** in the backend (lifecycle, escalation, access control, revocation/expiry, GPS accuracy, duplicate alerts, PIN lock-out, deletion) incl. the live background clock. **Police: implemented but simulated.** **Needs real Android/iPhone testing** (GPS, screen sleep, background) |
 | Contact trip page, police dashboard (simulated), city dashboard + CSV | Working; browser smoke test (`frontend/e2e/smoke.mjs`, 38 checks incl. 360/390/768/1440 px layouts) on the production build. **Not tried on real phones / Safari** |
 | Automatic deletion (photos 6 h, uploaded videos 6 h, walk personal data 24 h after the walk, report device ids and positions after 30 days — see below) | Working, tested |
+
+## What needs support to build
+
+This prototype is a lot for a first-year team. These parts are our idea, partly built, and need help to become real:
+
+- **Sentinel (live rider photos and night-ride videos):** riders who agree to share photos, real night footage, phones to test
+  on, and help checking that faces and number plates are reliably blurred (not yet measured on real photos).
+- **AI photo analysis at scale:** a working Gemini key and budget, and a way to check that the AI's reading of a street is right.
+- **Real alerts:** today the police dashboard is **simulated** and contacts see alerts only on the trip page — real SMS /
+  WhatsApp alerts and any link to police need partners and permission.
+- **Testing on real phones** (Android and iPhone: GPS, screen sleep, background) and a security review by someone experienced.
+- **Better map data around campus:** footpaths, street names and opening hours are mostly missing in OpenStreetMap
+  ([docs/DATA_GAPS.md](docs/DATA_GAPS.md)); adding them needs people walking the area.
+- **Hosting that keeps data:** the free plan erases everything when it sleeps.
 
 ## Run it on your laptop
 
@@ -156,7 +174,7 @@ Automated tests check these rules on a test database; they do not by themselves 
 - **Phones need https** for camera and GPS. Over plain http use the *simulated walk*.
 - **No access codes in the hosted demo** (`OPEN_ACCESS=true`): anyone with the link sees the police dashboard (live positions during alerts) and can upload to Sentinel. Use demo data only. Public community reports (limited per device), one server process with SQLite.
 - **Hosted on Render's free plan:** sleeps after 15 min without visitors (first visit then takes about a minute) and **erases walks, reports and photos on every sleep or restart**; the map is rebuilt each time.
-- Not tested yet: real night videos, real Gemini, real Android/iPhone. The hosted map tiles fix (OpenStreetMap "Access blocked") is not yet confirmed in a browser.
+- Not tested yet: real night videos, real Gemini, real Android/iPhone. Map tiles on the hosted site: fixed and confirmed working by the owner (2026-10-31).
 
 ## Tests
 

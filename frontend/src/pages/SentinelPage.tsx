@@ -78,6 +78,11 @@ export default function SentinelPage() {
           )
         }
       />
+      <div className="rounded-xl border border-beacon-400/40 bg-ink-850 p-3 text-sm text-ink-300" role="note">
+        <strong className="text-ink-100">Concept preview — not part of this prototype demo.</strong> Live rider photos and night-ride
+        videos are our idea for keeping the map up to date. The screens are built and were checked only with test clips; no real
+        footage has been used yet. Developing this needs support (riders, phones, testing and guidance).
+      </div>
 
       {!unlocked && !open ? (
         health.loading ? null : <AccessGate onOk={() => setUnlocked(true)} />

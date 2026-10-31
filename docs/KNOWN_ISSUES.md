@@ -120,4 +120,5 @@ Status values: Open · Workaround · Resolved · Accepted (stays for the demo, e
 | 112 | **Trip links in hosting logs (#98) and personal accounts deferred** | — | Deferred (owner, 2026-10-31) | Prototype scope; see "Future production work" in docs/SPRINT_STATUS.md. |
 
 - **Open access (owner decision 2026-10-31):** the hosted prototype runs with `OPEN_ACCESS=true` — anyone with the link can use Sentinel (uploads, photos) and see the police dashboard, including live positions during walk alerts. Fine for demo data only; set `OPEN_ACCESS=false` plus `SENTINEL_TOKEN`/`POLICE_TOKEN` before anyone real uses it.
-- **Map tiles 403 (fixed 2026-10-31):** OpenStreetMap refused tiles because the page sends no Referer (`no-referrer`). Tiles now use `referrerPolicy=strict-origin` (site address only). Fix not yet seen in a browser.
+- **Map tiles 403 (fixed 2026-10-31):** OpenStreetMap refused tiles because the page sends no Referer (`no-referrer`). Tiles now use `referrerPolicy=strict-origin` (site address only). All three maps; confirmed working on the hosted site by the owner (2026-10-31).
+- **Sentinel shown as a concept (owner decision 2026-10-31):** live photos and video mode are not used in the demo; the page carries a "Concept preview" note. Built and tested with test clips only.

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { api, type PoliceAlert } from '../api'
 import { useApi } from '../hooks/useApi'
 import { getCode, setCode } from '../lib/accessCodes'
+import { tabKeys } from '../lib/tabKeys'
 import { LiveMap } from '../components/LiveMap'
 import { ShieldIcon } from '../components/Icons'
 import { EmptyState, ErrorState, LoadingBlock } from '../components/States'
@@ -101,9 +102,10 @@ export default function PolicePage() {
             <Stat label="Showing" value={null} loading={false} hint={scope === 'active' ? 'Active alerts' : 'Last 100 alerts'} />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div role="tablist" className="inline-flex rounded-xl border border-ink-700 bg-ink-900 p-1">
+            <div role="tablist" aria-label="Alerts" className="inline-flex rounded-xl border border-ink-700 bg-ink-900 p-1"
+              onKeyDown={tabKeys(['active', 'history'] as const, scope, (s) => { setScope(s); setSelected(null) })}>
               {(['active', 'history'] as const).map((s) => (
-                <button key={s} role="tab" aria-selected={scope === s} onClick={() => { setScope(s); setSelected(null) }}
+                <button key={s} role="tab" aria-selected={scope === s} tabIndex={scope === s ? 0 : -1} onClick={() => { setScope(s); setSelected(null) }}
                   className={`rounded-lg px-4 py-2 text-sm font-medium ${scope === s ? 'bg-beacon-400 text-ink-950' : 'text-ink-300'}`}>{s === 'active' ? 'Active' : 'History'}</button>
               ))}
             </div>

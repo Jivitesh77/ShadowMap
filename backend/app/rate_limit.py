@@ -1,7 +1,10 @@
 """Per-client request limits for the expensive public endpoints (agreed 2026-10-31).
 
-Route planning 30 / min, help-point search 30 / min, walk start 5 / min, AI route briefing 10 / min per client,
-configurable with RATE_LIMIT_*_PER_MIN (0 = off). Above a limit the answer is HTTP 429 with a Retry-After header.
+Route planning 30 / min, help-point search 30 / min, walk start 5 / min, AI route briefing 10 / min per client
+(agreed 2026-10-31); reports 120 / hour, map 240 / min and where-am-I 120 / min per client (finalization; sized so a
+class sharing one hotspot is not blocked). Configurable
+with RATE_LIMIT_* (0 = off). Above a limit the answer is HTTP 429 with a Retry-After header.
+Reports also keep their own 5 per hour per device; the per-connection limit stops a client that invents device ids.
 
 How a "client" is recognised (client_ip): the direct connection address, or, behind a trusted proxy (TRUSTED_PROXY_HOPS,
 Render = 1), the X-Forwarded-For entry that proxy appended. Entries further left are written by the client itself and
@@ -22,10 +25,12 @@ from fastapi import HTTPException, Request
 
 from app import config
 
-WINDOW_S = 60.0
+WINDOW_S = 60.0  # default window
 MAX_KEYS = 50_000  # memory bound: idle clients are dropped when this many are tracked
 LABELS = {"route": "route requests", "help_point": "help-point searches", "walk_start": "walk starts",
-          "briefing": "route briefings"}
+          "briefing": "route briefings", "report": "reports", "map": "map loads", "where_am_i": "location look-ups"}
+# Window per category. Reports use an hour: a per-minute window would still allow hundreds of reports an hour.
+WINDOWS_S = {"report": 3600.0}
 
 
 class SlidingWindowLimiter:
@@ -37,22 +42,23 @@ class SlidingWindowLimiter:
         self._hits: dict[tuple, deque[float]] = {}
         self._lock = threading.Lock()
 
-    def hit(self, key: tuple, limit: int) -> float | None:
+    def hit(self, key: tuple, limit: int, window_s: float = WINDOW_S) -> float | None:
         """Record a request. Returns None if allowed, otherwise the seconds until the next request is allowed."""
         now = self.clock()
         with self._lock:
             times = self._hits.setdefault(key, deque())
-            while times and now - times[0] >= WINDOW_S:
+            while times and now - times[0] >= window_s:
                 times.popleft()
             if len(times) >= limit:
-                return WINDOW_S - (now - times[0])
+                return window_s - (now - times[0])
             times.append(now)
             if len(self._hits) > MAX_KEYS:
                 self._drop_idle(now)
             return None
 
     def _drop_idle(self, now: float) -> None:
-        for key in [k for k, t in self._hits.items() if not t or now - t[-1] >= WINDOW_S]:
+        longest = max([WINDOW_S, *WINDOWS_S.values()])
+        for key in [k for k, t in self._hits.items() if not t or now - t[-1] >= longest]:
             del self._hits[key]
 
     def reset(self) -> None:
@@ -85,14 +91,17 @@ def rate_limit(category: str):
         limit = config.RATE_LIMITS.get(category, 0)
         if limit <= 0:
             return
-        wait = limiter.hit((category, client_ip(request)), limit)
+        window = WINDOWS_S.get(category, WINDOW_S)
+        wait = limiter.hit((category, client_ip(request)), limit, window)
         if wait is not None:
             seconds = max(1, math.ceil(wait))
+            period = "hour" if window >= 3600 else "minute"
+            wait_text = f"{math.ceil(seconds / 60)} minutes" if seconds >= 120 else f"{seconds} seconds"
             raise HTTPException(
                 429,
                 {"code": "rate_limited", "retry_after_s": seconds,
-                 "message": f"Too many {LABELS[category]} from this network in the last minute (limit {limit}). "
-                            f"Please wait {seconds} seconds and try again."},
+                 "message": f"Too many {LABELS[category]} from this network in the last {period} (limit {limit}). "
+                            f"Please wait {wait_text} and try again."},
                 headers={"Retry-After": str(seconds)},
             )
 

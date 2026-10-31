@@ -128,20 +128,20 @@ export function PlanBar({ start, end, onSet, places, picking, setPicking, onMine
       onMap={() => { setPicking(which); setOpen(null) }} />
   )
   return (
-    <section className="sm-card grid grid-cols-1 gap-1 p-2 sm:p-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-center md:gap-0 md:divide-x md:divide-ink-700" aria-label="Plan a route">
-      <div className="md:pr-3">
+    <section className="sm-card grid grid-cols-1 gap-1 p-2 sm:p-3 md:grid-cols-3 md:items-center lg:grid-cols-[1fr_1fr_1fr_auto] lg:gap-0 lg:divide-x lg:divide-ink-700" aria-label="Plan a route">
+      <div className="lg:pr-3">
         <Field icon={<MapPinIcon size={18} />} caption="Starting point" value={picking === 'start' ? 'Tap the map…' : start?.label ?? null}
           placeholder="Choose a start" {...field('start')}>
           {chooser('start')}
         </Field>
       </div>
-      <div className="md:px-3">
+      <div className="lg:px-3">
         <Field icon={<FlagIcon size={18} />} caption="Destination" value={picking === 'end' ? 'Tap the map…' : end?.label ?? null}
           placeholder="Add a destination" {...field('end')}>
           {chooser('end')}
         </Field>
       </div>
-      <div className="md:px-3">
+      <div className="lg:px-3">
         <Field icon={<ClockIcon size={18} />} caption="Travel time (IST)" value={timeLabel} placeholder="Now"
           open={open === 'time'} setOpen={(v) => setOpen(v ? 'time' : null)}>
           <div className="space-y-1">
@@ -156,12 +156,12 @@ export function PlanBar({ start, end, onSet, places, picking, setPicking, onMine
           </div>
         </Field>
       </div>
-      <div className="flex items-center gap-2 pt-1 md:pl-3 md:pt-0">
+      <div className="flex items-center gap-2 pt-1 md:col-span-3 lg:col-span-1 lg:pl-3 lg:pt-0">
         {(start || end) && (
           <button onClick={onClear} className="min-h-12 rounded-xl px-3 text-sm text-ink-300 hover:bg-ink-900">Clear</button>
         )}
         <button onClick={onCompare} disabled={!canCompare || loading}
-          className="min-h-12 flex-1 rounded-xl bg-beacon-400 px-5 text-sm font-semibold whitespace-nowrap text-white shadow-sm transition-colors hover:bg-beacon-500 disabled:bg-lavender-200 disabled:text-beacon-300 md:flex-none">
+          className="min-h-12 flex-1 rounded-xl bg-beacon-400 px-5 text-sm font-semibold whitespace-nowrap text-white shadow-sm transition-colors hover:bg-beacon-500 disabled:bg-lavender-200 disabled:text-beacon-300 lg:flex-none">
           {loading ? 'Comparing…' : 'Compare routes →'}
         </button>
       </div>

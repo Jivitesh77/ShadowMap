@@ -1,6 +1,7 @@
 """Video checks and frame extraction with FFmpeg / ffprobe (blueprint §5 video mode)."""
 
 import json
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +13,25 @@ FRAME_WIDTH = 640  # blueprint §5: photos about 640 px wide
 
 # Tags in which phones store a recording location. A single location for the whole file is not a per-frame GPS track.
 LOCATION_TAGS = ("location", "location-eng", "com.apple.quicktime.location.ISO6709")
+
+
+TOOLS_MISSING = "video_tools_missing"
+TOOLS_MISSING_MESSAGE = ("Video mode is not available on this server: FFmpeg / ffprobe is not installed. "
+                         "Live photos, maps, routes and walks still work.")
+
+
+def missing_video_tools() -> list[str]:
+    """Names of the video tools this server cannot run (empty = video mode available)."""
+    from app import config
+    return [name for name, binary in (("ffmpeg", config.FFMPEG_BIN), ("ffprobe", config.FFPROBE_BIN)) if not shutil.which(binary)]
+
+
+def _run(cmd: list[str], **kwargs):
+    """subprocess.run that turns a missing / unusable tool into a clear VideoError instead of a crash."""
+    try:
+        return subprocess.run(cmd, **kwargs)
+    except (FileNotFoundError, PermissionError):
+        raise VideoError(TOOLS_MISSING, TOOLS_MISSING_MESSAGE)
 
 
 class VideoError(Exception):
@@ -26,8 +46,9 @@ def probe(path: Path) -> dict:
     if path.suffix.lower() not in ALLOWED_EXTENSIONS:
         raise VideoError("unsupported_format", f"'{path.suffix or 'no extension'}' videos are not supported. Use MP4, MOV, MKV, WEBM, AVI or 3GP.")
     try:
-        out = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)],
+        from app import config
+        out = _run(
+            [config.FFPROBE_BIN, "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)],
             capture_output=True, text=True, timeout=60, check=True,
         )
         info = json.loads(out.stdout)
@@ -87,11 +108,12 @@ def frame_times(duration_s: float, interval_s: float, start_s: float = 0.0, end_
 
 def extract_frame(src: Path, t: float, out: Path) -> None:
     """Save the frame at second `t` as a JPEG about 640 px wide (rotation from the phone is applied by FFmpeg)."""
+    from app import config
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg", "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", str(src), "-frames:v", "1",
+        config.FFMPEG_BIN, "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", str(src), "-frames:v", "1",
         "-vf", f"scale='min({FRAME_WIDTH},iw)':-2", "-q:v", "4", str(out),
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    res = _run(cmd, capture_output=True, text=True, timeout=60)
     if res.returncode != 0 or not out.exists() or out.stat().st_size == 0:
         raise VideoError("frame_failed", f"Could not read the frame at {t:.1f} s.")

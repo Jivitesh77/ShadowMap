@@ -141,7 +141,8 @@ def update_position(db: Session, walk: models.Walk, now: datetime, lat: float, l
     at_destination = accurate and haversine_m(lat, lon, walk.dest_lat, walk.dest_lon) <= config.WALK_ARRIVE_M
     if at_destination and walk.status in ("active",):
         walk.status, walk.ended_at = "arrived", now
-        add_event(walk, now, "arrived", f"{walk.walker_name} reached safely at {(now + timedelta(hours=5, minutes=30)).strftime('%I:%M %p').lstrip('0')}. Location sharing stopped.")
+        # Only the phone's position is known: never claim the walker is safe.
+        add_event(walk, now, "arrived", f"{walk.walker_name}'s phone reached the destination at {(now + timedelta(hours=5, minutes=30)).strftime('%I:%M %p').lstrip('0')}. The walk ended and location sharing stopped.")
     elif at_destination and walk.status in ("checking", "alert") and not _arrival_already_noted(walk):
         # Agreed 2026-10-31: while "Are you safe?" is unanswered (or an SOS / duress alert is open), reaching the
         # destination is only recorded for contacts and police. The phone may not be in the walker's hands, so it never

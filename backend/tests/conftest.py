@@ -15,8 +15,9 @@ os.environ["SENTINEL_ENFORCE_NIGHT"] = "false"  # security tests switch these ru
 os.environ["SENTINEL_ENFORCE_MOVING"] = "false"
 os.environ["POLICE_TOKEN"] = "test-police-code"
 # The general suite makes many requests from one test client; tests/test_rate_limits.py sets the agreed limits itself.
-for _name in ("ROUTE", "HELP_POINT", "WALK_START", "BRIEFING"):
-    os.environ[f"RATE_LIMIT_{_name}_PER_MIN"] = "100000"
+for _name in ("ROUTE_PER_MIN", "HELP_POINT_PER_MIN", "WALK_START_PER_MIN", "BRIEFING_PER_MIN", "REPORT_PER_HOUR", "MAP_PER_MIN",
+              "WHERE_AM_I_PER_MIN"):
+    os.environ[f"RATE_LIMIT_{_name}"] = "100000"
 
 
 @pytest.fixture

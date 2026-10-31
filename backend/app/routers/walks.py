@@ -269,7 +269,7 @@ class WhereIn(BaseModel):
     city: str | None = None
 
 
-@router.post("/where-am-i")
+@router.post("/where-am-i", dependencies=[Depends(rate_limit("where_am_i"))])
 def where_am_i(req: WhereIn, db: Session = Depends(get_db)):
     """Words to tell a helpline operator: street, nearest landmark, nearest open help point, nearest police (blueprint §9)."""
     at = parse_at(req.at)

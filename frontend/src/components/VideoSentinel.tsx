@@ -72,7 +72,8 @@ function JobCard({ job, onRemove }: { job: VideoJob; onRemove: (id: number) => v
   )
 }
 
-export function VideoSentinel() {
+/** `unavailable`: the server cannot read videos (no FFmpeg) — say so up front instead of failing after an upload. */
+export function VideoSentinel({ unavailable = null }: { unavailable?: string | null }) {
   const map = useApi(() => api.map())
   const areaName = map.data?.source.area?.name ?? null
   const assets = useApi(api.assetVideos)
@@ -216,6 +217,7 @@ export function VideoSentinel() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-5 rounded-2xl border border-ink-700 bg-ink-850 p-5">
+        {unavailable && <ErrorState title="Video mode unavailable" message={unavailable} />}
         {/* 1. Video */}
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-300">1 · Choose the night-ride video</h2>
@@ -251,7 +253,7 @@ export function VideoSentinel() {
             <label className="flex cursor-pointer flex-col justify-center rounded-xl border border-dashed border-ink-600 p-3 text-center hover:bg-ink-800">
               <span className="text-sm text-ink-100">Upload a video</span>
               <span className="text-xs text-ink-400">MP4, MOV, MKV, WEBM, AVI or 3GP · up to {VIDEO_UPLOAD_LIMIT_MB} MB</span>
-              <input type="file" accept="video/*,.mkv,.3gp" className="sr-only" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+              <input type="file" accept="video/*,.mkv,.3gp" className="sr-only" disabled={!!unavailable} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
             </label>
           </div>
           {uploadPct != null && (

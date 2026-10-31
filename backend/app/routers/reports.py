@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import get_db, utcnow
+from app.rate_limit import rate_limit
 from app.routers.map import parse_at
 from app.services.geo import locate_on_line
 from app.services.scoring import REPORT_EFFECTS
@@ -37,7 +38,7 @@ class ReportIn(BaseModel):
     at: str | None = None  # the walk time shown on the page, so the new score matches what the person sees
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(rate_limit("report"))])  # per connection, on top of the per-device rule
 def create_report(req: ReportIn, db: Session = Depends(get_db)):
     if req.kind not in STREET_KINDS | PLACE_KINDS:
         raise _err(422, "bad_kind", "Unknown report type.")

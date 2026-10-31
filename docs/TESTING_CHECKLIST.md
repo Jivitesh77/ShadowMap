@@ -5,7 +5,8 @@ Tick each box. If something fails, write what you did, what you expected and wha
 
 ## 0. Preparation (laptop)
 
-- [ ] `cd ~/Projects/shadowmap/backend && .venv/bin/pytest` → **286 passed**
+- [ ] `cd ~/Projects/shadowmap/backend && .venv/bin/pytest` → **296 passed**
+- [ ] Browser smoke test on a test copy (README "Tests") → **38 of 38 checks passed** (layouts at 360 / 390 / 768 / 1440 px; this is a desktop Chrome check, not a phone test)
 - [ ] `backend/.env` has `DEMO_MODE=true` and a team member's number in `DEMO_CALL_NUMBER`
 - [ ] Note the two codes: `grep -E "SENTINEL_TOKEN|POLICE_TOKEN" ~/Projects/shadowmap/backend/.env`
 - [ ] `./start.sh`, open http://localhost:5173 → header shows **Server online**

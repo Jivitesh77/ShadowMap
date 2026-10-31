@@ -18,7 +18,7 @@ from app.services.geo import haversine_m, locate_on_line
 from app.services import cities, storage
 from app.services.routing import RouteError, trace
 from app.upload_guard import disk_full_detail, too_large_detail
-from app.services.video import ALLOWED_EXTENSIONS, VideoError, probe
+from app.services.video import ALLOWED_EXTENSIONS, TOOLS_MISSING, TOOLS_MISSING_MESSAGE, VideoError, missing_video_tools, probe
 from app.services.video_jobs import street_edges, worker
 
 router = APIRouter(prefix="/api/sentinel")
@@ -27,6 +27,11 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 def _err(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status, {"code": code, "message": message})
+
+
+def _video_status(e: VideoError) -> int:
+    """503 when the server lacks FFmpeg (not the user's fault), 415 for unsupported files, otherwise 422."""
+    return {TOOLS_MISSING: 503, "unsupported_format": 415}.get(e.code, 422)
 
 
 def require_access(x_sentinel_token: str | None = Header(None)) -> None:
@@ -156,7 +161,7 @@ def check_asset_video(name: str):
     try:
         return {"video_ref": f"asset:{name}", "name": name, "info": probe(_asset_path(name))}
     except VideoError as e:
-        raise _err(422 if e.code != "unsupported_format" else 415, e.code, e.message)
+        raise _err(_video_status(e), e.code, e.message)
 
 
 @router.post("/videos/uploads", dependencies=PROTECTED)
@@ -187,7 +192,7 @@ async def upload_video(file: UploadFile = File(...)):
         info = probe(dest)
     except VideoError as e:
         dest.unlink(missing_ok=True)  # our own copy of a file we cannot use
-        raise _err(415 if e.code == "unsupported_format" else 422, e.code, e.message)
+        raise _err(_video_status(e), e.code, e.message)
     return {"video_ref": f"upload:{dest.name}", "name": file.filename or dest.name, "info": info}
 
 
@@ -235,7 +240,7 @@ def create_job(req: JobRequest, db: Session = Depends(get_db)):
     try:
         info = probe(path)
     except VideoError as e:
-        raise _err(422, e.code, e.message)
+        raise _err(_video_status(e) if e.code == TOOLS_MISSING else 422, e.code, e.message)
     if req.use_video_time:
         if not info["creation_time_utc"]:
             raise _err(422, "no_video_time", "This video has no recording time stored. Enter when the ride started.")
@@ -340,6 +345,8 @@ def sentinel_status(db: Session = Depends(get_db)):
         "public_photos": db.scalar(select(func.count()).select_from(models.Observation).where(models.Observation.photo_public.is_(True))),
         "ai_configured": bool(config.GEMINI_API_KEY),
         "ai_note": None if config.GEMINI_API_KEY else "Photos are blurred but wait for AI analysis until a Gemini key is set.",
+        "video_available": not missing_video_tools(),
+        "video_note": None if not missing_video_tools() else TOOLS_MISSING_MESSAGE,
     }
 
 

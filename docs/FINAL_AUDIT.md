@@ -1,3 +1,5 @@
+> **Historical document** — describes the 80-test, pre-M6 state of 2026-10-30. Current status: docs/SPRINT_STATUS.md and docs/KNOWN_ISSUES.md.
+
 # Final integration audit (2026-10-30)
 
 Audit of the whole application against BLUEPRINT.md, before the testing day. No new features were added except automatic deletion, which the blueprint already requires (§6, §13) and which was missing.

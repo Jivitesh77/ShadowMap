@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app import config, models
 from app.db import get_db, init_db, utcnow
 from app.logging_setup import setup_logging
+from app.security_headers import SecurityHeaders
 from app.upload_guard import UploadGuard
 from app.routers import map as map_router
 from app.routers import google_places as google_router
@@ -43,6 +44,7 @@ setup_logging()  # before the app starts: one format, and no trip-link secrets i
 # The automatic API pages are for local development; hosting switches them off with API_DOCS=false (render.yaml).
 _no_api_docs = {} if config.API_DOCS else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 app = FastAPI(title="ShadowMap API", lifespan=lifespan, **_no_api_docs)
+app.add_middleware(SecurityHeaders)  # nosniff, no-referrer, no framing, CSP for API responses
 app.add_middleware(UploadGuard)  # video upload: size, disk space and access code checked while it arrives
 app.add_middleware(  # added last = outermost, so error answers from the guard also carry CORS headers
     CORSMiddleware,
@@ -76,11 +78,24 @@ def health(db: Session = Depends(get_db)):
         database = "ok"
     except Exception:
         database = "error"
+    from app.services import redaction
+    from app.services.video import missing_video_tools
+    try:
+        redaction._load()
+        blurring = "ok"
+    except redaction.RedactionError:
+        blurring = "unavailable"  # photos then stay private and unscored (fail closed)
+    workers = ({"walk_clock": walk_monitor._thread.is_alive(), "video_queue": video_worker._thread.is_alive(),
+                "photo_queue": photo_worker._thread.is_alive()} if config.START_WORKERS else "not started (START_WORKERS=false)")
     return {
-        "status": "ok" if database == "ok" else "degraded",
+        # "ok" needs the database and, when started, the walk clock (it raises alerts when a phone goes quiet).
+        "status": "ok" if database == "ok" and (not isinstance(workers, dict) or workers["walk_clock"]) else "degraded",
         "database": database,
         "demo_mode": config.DEMO_MODE,
         "gemini_configured": bool(config.GEMINI_API_KEY),
+        "video_tools": "ok" if not missing_video_tools() else "missing",
+        "face_blurring": blurring,
+        "workers": workers,
         "server_time_utc": utcnow().isoformat() + "Z",
     }
 

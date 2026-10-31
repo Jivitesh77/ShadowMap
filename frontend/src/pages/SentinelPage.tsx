@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../api'
 import { ACCESS_CHANGED } from '../lib/accessCodes'
+import { tabKeys } from '../lib/tabKeys'
 import { getAccessCode, setAccessCode } from '../lib/sentinelAccess'
 import { ErrorState } from '../components/States'
 import { useApi } from '../hooks/useApi'
@@ -81,7 +82,8 @@ export default function SentinelPage() {
       ) : (
       <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="tablist" aria-label="Sentinel mode" className="inline-flex rounded-xl border border-ink-700 bg-ink-900 p-1">
+        <div role="tablist" aria-label="Sentinel mode" className="inline-flex rounded-xl border border-ink-700 bg-ink-900 p-1"
+          onKeyDown={tabKeys(['video', 'live'] as const, mode, setMode)}>
           {(
             [
               ['video', 'Video mode'],
@@ -92,6 +94,7 @@ export default function SentinelPage() {
               key={m}
               role="tab"
               aria-selected={mode === m}
+              tabIndex={mode === m ? 0 : -1}
               onClick={() => setMode(m)}
               className={`rounded-lg px-4 py-2 text-sm font-medium ${mode === m ? 'bg-beacon-400 text-ink-950' : 'text-ink-300 hover:text-ink-100'}`}
             >
@@ -104,7 +107,14 @@ export default function SentinelPage() {
         </button>
       </div>
 
-      {mode === 'video' ? <VideoSentinel /> : <LiveSentinel />}
+      {status.data && !status.data.ai_configured && (
+        <div className="rounded-xl border border-ink-700 bg-ink-850 p-3 text-sm text-ink-300" role="note">
+          <strong className="text-ink-100">AI analysis is not set up on this server (no Gemini key).</strong> Photos and video frames are
+          still blurred and kept <strong>private</strong>; they are not analysed, so they do not change street colours yet. Maps, routes,
+          reports and walks are not affected.
+        </div>
+      )}
+      {mode === 'video' ? <VideoSentinel unavailable={status.data?.video_available === false ? status.data.video_note ?? 'Video mode is not available on this server.' : null} /> : <LiveSentinel />}
       </>
       )}
     </div>

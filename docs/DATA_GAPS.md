@@ -43,6 +43,19 @@ The Leaflet map shows OpenStreetMap's standard tiles. They may be newer than our
 
 If a Google key is configured, the Walker panel can list extra nearby places from Google Maps. These are **not** used to fill the gaps above: they are not drawn on our map, not saved, and not merged (Google's terms). A team member may visit a place found there and then add it as a ShadowMap-verified place from their own on-site check.
 
+## Team verification workflow (no place is verified yet)
+
+Labels shown in the app for every place: **OpenStreetMap-listed** (named OSM entry, not checked), **needs review**
+(unnamed OSM entry or an old / invalid team check), **ShadowMap verified** (checked in person by the team, with date and
+name). Opening hours that are not listed are shown as **Hours unknown** — never as open.
+
+To verify a place (Guwahati: `assets/demo-data/manual_places.json`; Delhi: `assets/demo-data/delhi/manual_places.json`):
+1. Visit the place in person at the time you want to confirm (e.g. 10–11 pm). Do not copy from Google Maps.
+2. Add an entry with the fields described in the file's `how_to`: name, category, position, opening hours as seen,
+   `verified_by` (your name), `verified_on` (date), and how you checked (sign on the door, asked staff).
+3. Rebuild that city's map before any reports exist for it: `cd backend && .venv/bin/python -m scripts.build_map --city delhi`.
+4. The place then shows "ShadowMap verified" with your name and date; the check counts as current for 6 months.
+
 ## How gaps get filled
 
 1. **Places checked in person** → `assets/demo-data/manual_places.json` (who checked, when, how), then `cd backend && .venv/bin/python -m scripts.build_map`. Shown on the map with a white ring and labelled "ShadowMap verified".

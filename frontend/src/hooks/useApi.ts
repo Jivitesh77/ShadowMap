@@ -15,16 +15,21 @@ export function useApi<T>(load: () => Promise<T>, pollMs?: number, key?: string 
   const [loading, setLoading] = useState(true)
   const loadRef = useRef(load)
   loadRef.current = load
+  const latest = useRef(0) // only the newest request may update the state (an older, slower answer is dropped)
 
   const run = useCallback(async (showSpinner: boolean) => {
+    const id = ++latest.current
     if (showSpinner) setLoading(true)
     try {
-      setData(await loadRef.current())
+      const value = await loadRef.current()
+      if (id !== latest.current) return
+      setData(value)
       setError(null)
     } catch (err) {
-      setError((err as Error).message)
+      if (id !== latest.current) return
+      setError((err as Error).message) // the last good data stays visible
     } finally {
-      setLoading(false)
+      if (id === latest.current) setLoading(false)
     }
   }, [])
 

@@ -56,6 +56,9 @@ Rules enforced by the backend:
 | `POST /api/help-point` | 30 / minute | `RATE_LIMIT_HELP_POINT_PER_MIN` |
 | `POST /api/walks` (starting a walk) | 5 / minute | `RATE_LIMIT_WALK_START_PER_MIN` |
 | `POST /api/route/briefing` (AI briefing) | 10 / minute | `RATE_LIMIT_BRIEFING_PER_MIN` |
+| `POST /api/reports` | 120 / **hour** per connection (plus 5 / hour per device) | `RATE_LIMIT_REPORT_PER_HOUR` |
+| `GET /api/map` | 240 / minute | `RATE_LIMIT_MAP_PER_MIN` |
+| `POST /api/where-am-i` | 120 / minute | `RATE_LIMIT_WHERE_AM_I_PER_MIN` |
 
 - Over a limit: HTTP 429 with a clear message and a `Retry-After` header (seconds); the browser can read both (CORS exposes `Retry-After`). `0` switches a limit off.
 - **Never limited:** position updates, PIN answers, SOS, ending a walk, the trusted-contact page, maps, police and Sentinel endpoints.
@@ -66,6 +69,26 @@ Rules enforced by the backend:
 - Do **not** set uvicorn's `FORWARDED_ALLOW_IPS="*"`: uvicorn would then use the *first* (visitor-written) entry.
 - **Verify after the first deploy (not tested on Render yet):** the number of proxies Render puts in front is an assumption. If Render ever adds two entries for one visitor, everybody behind the same Render edge would share a limit (too strict, never too lax). Raising `TRUSTED_PROXY_HOPS` above the real number would make limits fakeable — never do that.
 - Locally (`./start.sh`) the default `TRUSTED_PROXY_HOPS=0` ignores the header completely.
+
+## Security headers and health check
+
+- Backend (`app/security_headers.py`): `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
+  `Permissions-Policy`, a strict `Content-Security-Policy` on API responses, `Strict-Transport-Security` over https.
+- Frontend (`frontend/vercel.json`): the same basic headers; camera and location allowed for the app's own origin only.
+  **No Content-Security-Policy yet** — add it after deployment, when the backend and tile addresses are known, and check
+  the map, photos and API calls in a browser before keeping it.
+- `/api/health` reports `database`, `video_tools` (FFmpeg), `face_blurring` (model loaded), `workers` (walk clock, video and
+  photo queues alive) and `gemini_configured`. `status` is "degraded" if the database or the walk clock is down.
+
+## Native Python on Render (alternative to Docker — deferred)
+
+Native Python can run everything except video mode **unless FFmpeg is available**: Render's native runtime does not let
+you install system packages, and whether its image includes `ffmpeg` / `ffprobe` is **not verified**. The code handles a
+missing FFmpeg cleanly (video mode answers 503, everything else works) and accepts `FFMPEG_BIN` / `FFPROBE_BIN` for a
+separately downloaded static build. A native setup would need: build command `cd backend && pip install -r requirements.txt`,
+start command `cd backend && python -m scripts.build_map --all --if-empty && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`,
+the same environment variables and persistent disk as `render.yaml`, and a Python version Render offers (tests ran on 3.14).
+Not prepared as a config file: deferred by the owner (2026-10-31, prototype scope).
 
 ## Backup and restore (database, files, model)
 

@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { api, type HelpPointResult, type LatLon, type RouteResult } from '../api'
+import { api, type HelpPointResult, type LatLon, type MapData, type MapScores, type RouteResult } from '../api'
 import { useApi } from '../hooks/useApi'
 import { getMyLocation } from '../lib/location'
 import { TopBarSlotContext } from '../components/AppShell'
@@ -15,9 +15,11 @@ import { RoutePanel, type NamedPoint, type PickTarget } from '../components/Rout
 import { EmptyState, ErrorState, Skeleton } from '../components/States'
 import { WalkActive, WalkSetup } from '../components/WalkWithMe'
 import { walkSession, type WalkSession } from '../lib/walkSession'
+import { tabKeys } from '../lib/tabKeys'
 import { CATEGORY_ORDER, ROUTE_COLOURS, SAFETY_COLOURS, categoryMeta, formatDistance, placeName } from '../lib/mapMeta'
 
 type Tab = 'route' | 'report' | 'help' | 'area'
+const TABS: readonly Tab[] = ['route', 'report', 'help', 'area']
 
 /** Today's date in India time, as YYYY-MM-DD. */
 function todayIST(): string {
@@ -29,11 +31,39 @@ function formatAt(at: string): string {
   return d.toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
+/** Street shapes and place details (loaded once) with the newest scores and open / closed status merged in. */
+function withLiveScores(base: MapData | null, live: MapScores | null): MapData | null {
+  if (!base || !live || (base.source.city && live.city !== base.source.city)) return base
+  const streets = new Map(live.streets.map((s) => [s.id, s]))
+  const places = new Map(live.places.map((p) => [p.id, p]))
+  return {
+    ...base,
+    at: live.at,
+    generated_utc: live.generated_utc,
+    streets: base.streets.map((s) => ({ ...s, ...streets.get(s.id) })),
+    places: base.places.map((p) => ({ ...p, ...places.get(p.id) })),
+  }
+}
+
+// Categories with more places than this start hidden (Delhi has ~900 shops); tapping the chip shows them.
+const BUSY_CATEGORY = 60
+
 export default function WalkerPage() {
   const [at, setAt] = useState<string | undefined>(undefined) // undefined = now
   const [refresh, setRefresh] = useState(0) // bumped after a report so scores, routes and panels reload
-  const map = useApi(() => api.map(at), at ? undefined : 60000, `${at ?? 'now'}|${refresh}`)
+  // Shapes and details once (Delhi ~3 MB); afterwards only the light scores view, every minute or when time / reports change.
+  const base = useApi(() => api.map(), undefined, 'base')
+  const live = useApi(() => (base.data ? api.mapScores(at) : Promise.resolve(null)), at ? undefined : 60000,
+    `${at ?? 'now'}|${refresh}|${base.data ? 'ready' : 'waiting'}`)
+  const merged = useMemo(() => withLiveScores(base.data, live.data), [base.data, live.data])
+  const map = {
+    data: merged,
+    error: base.error ?? (live.error && !live.data ? live.error : null),
+    loading: base.loading || live.loading,
+    reload: () => { base.reload(); live.reload() },
+  }
   const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const busyHiddenFor = useRef<string | null>(null)
   const [openOnly, setOpenOnly] = useState(false)
   const [selection, setSelection] = useState<Selection>(null)
   const [tab, setTab] = useState<Tab>('route')
@@ -77,12 +107,16 @@ export default function WalkerPage() {
   const [helpLoading, setHelpLoading] = useState(false)
   const [helpError, setHelpError] = useState<string | null>(null)
 
+  const countedFor = useRef<string | null>(null) // the start/destination pair already counted for the repair ranking
   const findRoute = useCallback(async () => {
     if (!start || !end) return
+    const pair = `${start.lat},${start.lon}|${end.lat},${end.lon}`
+    const count = countedFor.current !== pair // later re-plans (time changed, report sent) are not new routes
     setRouteLoading(true)
     setRouteError(null)
     try {
-      setRoute(await api.route(start, end, at))
+      setRoute(await api.route(start, end, at, count))
+      if (count) countedFor.current = pair
     } catch (err) {
       setRoute(null)
       setRouteError((err as Error).message)
@@ -165,6 +199,15 @@ export default function WalkerPage() {
     data?.places.forEach((p) => (c[p.category] = (c[p.category] ?? 0) + 1))
     return c
   }, [data])
+  // Busy categories start hidden once per city (the person's own choices are kept after that).
+  useEffect(() => {
+    if (!data) return
+    const city = data.source.city ?? 'default'
+    if (busyHiddenFor.current === city) return
+    busyHiddenFor.current = city
+    setHidden(new Set(CATEGORY_ORDER.filter((c) => (counts[c] ?? 0) > BUSY_CATEGORY)))
+  }, [data, counts])
+  const busyHidden = CATEGORY_ORDER.filter((c) => hidden.has(c) && (counts[c] ?? 0) > BUSY_CATEGORY)
   const visiblePlaces = useMemo(
     () => (data?.places ?? []).filter((p) => !hidden.has(p.category) && (!openOnly || p.status === 'open')),
     [data, hidden, openOnly],
@@ -212,7 +255,7 @@ export default function WalkerPage() {
     setTab('route')
     setSelection(null)
     setSetupOpen(false)
-    findRoute()
+    if (!route || routeError) findRoute() // the route is planned automatically once both points are set: never twice
     if (window.innerWidth < 1024) setTimeout(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
   const shareJourney = () => {
@@ -271,6 +314,8 @@ export default function WalkerPage() {
                   <span className={`h-2 w-2 shrink-0 rounded-full ${map.loading ? 'bg-caution' : 'bg-safe'}`} />
                   <span>
                     {data.source.area?.name ?? 'Demo area'} · open/closed for <span className="font-medium text-ink-100">{formatAt(data.at)}</span>
+                    {data.generated_utc && <> · scores updated {new Date(data.generated_utc).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</>}
+                    {live.error && live.data && <span className="text-caution-ink"> · could not refresh, showing the last scores</span>}
                   </span>
                 </p>
               )}
@@ -292,6 +337,12 @@ export default function WalkerPage() {
                 )
               })}
             </div>
+            {busyHidden.length > 0 && (
+              <p className="-mt-1 px-1 pb-2 text-[11px] text-ink-400">
+                {busyHidden.map((c) => categoryMeta(c).plural).join(', ')} hidden to keep the map readable — tap a crossed-out chip to show them.
+                Help points and the Area tab still list every place.
+              </p>
+            )}
             <div className="relative h-[56vh] min-h-[340px] overflow-hidden rounded-xl border border-ink-700 lg:h-auto lg:min-h-0 lg:flex-1">
               {!data ? (
                 <Skeleton className="h-full w-full rounded-none" />
@@ -355,7 +406,8 @@ export default function WalkerPage() {
               <PlaceInfo p={selectedPlace} centreLabel={data?.source.centre_label} onClose={() => setSelection(null)} onReported={afterReport} />
             ) : (
               <div className="space-y-5">
-                <div role="tablist" aria-label="Walker tools" className="grid grid-cols-4 gap-1 rounded-xl bg-ink-900 p-1">
+                <div role="tablist" aria-label="Walker tools" className="grid grid-cols-4 gap-1 rounded-xl bg-ink-900 p-1"
+                  onKeyDown={tabKeys(TABS, tab, (t) => { setTab(t); setPicking(null) })}>
                   {(
                     [
                       ['route', 'Routes'],
@@ -364,7 +416,7 @@ export default function WalkerPage() {
                       ['area', 'Area'],
                     ] as const
                   ).map(([t, label]) => (
-                    <button key={t} role="tab" aria-selected={tab === t} onClick={() => { setTab(t); setPicking(null) }}
+                    <button key={t} role="tab" aria-selected={tab === t} tabIndex={tab === t ? 0 : -1} onClick={() => { setTab(t); setPicking(null) }}
                       className={`min-h-9 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-ink-850 text-ink-100 shadow-sm ring-1 ring-ink-700' : 'text-ink-400 hover:text-ink-100'}`}>
                       {label}
                     </button>

@@ -60,7 +60,10 @@ function SourceTags({ p }: { p: Place }) {
       {p.sources.includes('shadowmap') && (
         <span className="rounded-md bg-ink-100 px-2 py-0.5 text-xs font-semibold text-ink-950">ShadowMap verified</span>
       )}
-      {p.sources.includes('osm') && <span className="rounded-md bg-ink-700 px-2 py-0.5 text-xs font-medium text-ink-300">OpenStreetMap</span>}
+      {p.sources.includes('osm') && <span className="rounded-md bg-ink-700 px-2 py-0.5 text-xs font-medium text-ink-300">OpenStreetMap-listed</span>}
+      {p.confidence === 'low' && (
+        <span className="rounded-md bg-caution/15 px-2 py-0.5 text-xs font-medium text-caution-ink" title={p.confidence_reason}>Needs review</span>
+      )}
     </>
   )
 }

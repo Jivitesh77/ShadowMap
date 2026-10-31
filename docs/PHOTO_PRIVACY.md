@@ -46,6 +46,20 @@ Every error (rate limit, timeout, server error, malformed or oddly structured an
 
 Only observations that are analysed (`analysis_status = done`) **and privacy-approved** (`photo_public`) count (blueprint §7 formula unchanged, with freshness). Pending, blocked, failed, unclear, expired and private observations never affect scores or the route briefing. Consequence: while plate detection is weak, many night photos with vehicles will not affect scores. Low-confidence analyses may only **lower** a score, never raise it (the formula is computed with and without them and the lower value is used).
 
+## Retention of Sentinel records (documented 2026-10-31)
+
+| What | Kept | Why |
+| --- | --- | --- |
+| Original photo / video frame | 6 h, then deleted | Blurring and analysis only |
+| Blurred copy | 6 h, then deleted | Shown only if approved |
+| Uploaded video file | 6 h after processing (2 h if never processed) | Frame extraction only |
+| Observation record: street, time, AI description and scores | Indefinitely | Street history for the map (no image, no faces) |
+| Observation record: **device id** and **GPS position** | **Indefinitely (current behaviour)** | Device id: duplicate / GPS-jump checks need only the last 10 minutes. Position: the street link already records where the photo belongs |
+
+**Recommended rule (not implemented — owner decision):** clear the device id after 24 hours and round or clear the GPS
+position after 30 days (the street link stays). Riders are team members, but their positions form a movement trace,
+so this should be decided before any public use.
+
 ## Still needed
 
 1. **A Gemini key** (`GEMINI_API_KEY` in `backend/.env`) — without it no photo is analysed, scored or shown.

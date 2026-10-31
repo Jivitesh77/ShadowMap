@@ -106,6 +106,15 @@ body {
   width: 16px;
   height: 16px;
 }
+.sm-pin.sm-compact {
+  width: 20px;
+  height: 20px;
+  border-width: 1.5px;
+}
+.sm-pin.sm-compact svg {
+  width: 11px;
+  height: 11px;
+}
 .sm-open {
   background: var(--color-beacon-400);
   color: #ffffff;

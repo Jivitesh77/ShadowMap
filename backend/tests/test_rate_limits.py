@@ -23,6 +23,9 @@ from app.services.geo import line_length_m
 
 BACKEND = Path(__file__).resolve().parents[1]
 AGREED = {"route": 30, "help_point": 30, "walk_start": 5, "briefing": 10}
+# Finalization: per-connection limits for reports (per hour), the map and where-am-I (per minute).
+ADDED = {"report": 120, "map": 240, "where_am_i": 120}
+DEFAULTS = {**AGREED, **ADDED}
 LANES = {"guwahati": (57.0, 117.0, 880701), "delhi": (58.0, 118.0, 880801)}
 
 
@@ -51,7 +54,7 @@ def streets():
 @pytest.fixture
 def clock(monkeypatch):
     fake = FakeClock()
-    monkeypatch.setattr(config, "RATE_LIMITS", dict(AGREED))
+    monkeypatch.setattr(config, "RATE_LIMITS", dict(DEFAULTS))
     monkeypatch.setattr(config, "TRUSTED_PROXY_HOPS", 0)
     monkeypatch.setattr(limiter, "clock", fake)
     limiter.reset()
@@ -78,14 +81,15 @@ CALLS = {
 
 
 def test_agreed_defaults_and_safe_parsing(monkeypatch):
-    for name in ("ROUTE", "HELP_POINT", "WALK_START", "BRIEFING"):
-        monkeypatch.delenv(f"RATE_LIMIT_{name}_PER_MIN", raising=False)
-    assert config.rate_limits_from_env() == AGREED
+    for name in ("ROUTE_PER_MIN", "HELP_POINT_PER_MIN", "WALK_START_PER_MIN", "BRIEFING_PER_MIN", "REPORT_PER_HOUR", "MAP_PER_MIN",
+                 "WHERE_AM_I_PER_MIN"):
+        monkeypatch.delenv(f"RATE_LIMIT_{name}", raising=False)
+    assert config.rate_limits_from_env() == DEFAULTS
     monkeypatch.setenv("RATE_LIMIT_ROUTE_PER_MIN", "45")
     monkeypatch.setenv("RATE_LIMIT_HELP_POINT_PER_MIN", "lots")  # invalid -> agreed default
     monkeypatch.setenv("RATE_LIMIT_WALK_START_PER_MIN", "-3")  # negative -> agreed default
     monkeypatch.setenv("RATE_LIMIT_BRIEFING_PER_MIN", "0")  # 0 = switched off
-    assert config.rate_limits_from_env() == {"route": 45, "help_point": 30, "walk_start": 5, "briefing": 0}
+    assert config.rate_limits_from_env() == {**DEFAULTS, "route": 45, "briefing": 0}
 
 
 @pytest.mark.parametrize("category", list(AGREED))

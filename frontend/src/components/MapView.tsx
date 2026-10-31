@@ -9,15 +9,20 @@ import { tileProvider } from '../lib/mapProvider'
 
 export type Selection = { kind: 'street'; id: number } | { kind: 'place'; id: number } | null
 
-function placeIcon(p: Place, selected: boolean) {
-  const cls = ['sm-pin', `sm-${p.status}`, p.sources.includes('shadowmap') ? 'sm-manual' : '', selected ? 'sm-selected' : '']
+// With many pins on screen (dense Delhi areas) smaller pins keep streets and colours visible; all stay clickable.
+const COMPACT_ABOVE = 150
+
+function placeIcon(p: Place, selected: boolean, compact: boolean) {
+  const cls = ['sm-pin', `sm-${p.status}`, p.sources.includes('shadowmap') ? 'sm-manual' : '', selected ? 'sm-selected' : '',
+    compact && !selected ? 'sm-compact' : '']
     .filter(Boolean)
     .join(' ')
+  const px = compact && !selected ? 20 : 30
   return L.divIcon({
     className: '',
     html: `<div class="${cls}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${categoryMeta(p.category).icon}</svg></div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
+    iconSize: [px, px],
+    iconAnchor: [px / 2, px / 2],
   })
 }
 
@@ -202,7 +207,7 @@ export function MapView({
           <Marker
             key={`${p.id}-${p.status}-${selected}-${picking}`}
             position={[p.lat, p.lon]}
-            icon={placeIcon(p, selected)}
+            icon={placeIcon(p, selected, places.length > COMPACT_ABOVE)}
             zIndexOffset={selected ? 1000 : p.status === 'open' ? 500 : 0}
             eventHandlers={{
               click: () => (picking ? onPick({ lat: p.lat, lon: p.lon }) : onSelect({ kind: 'place', id: p.id })),

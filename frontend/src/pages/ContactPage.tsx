@@ -17,7 +17,7 @@ function Banner({ v }: { v: ContactView }) {
   if (v.status === 'checking')
     return <div className="rounded-2xl bg-caution/20 p-4 ring-1 ring-caution" role="status"><p className="font-semibold">ShadowMap is asking {v.walker_name} “Are you safe?”</p><p className="text-sm text-ink-300">You will be alerted if there is no answer.</p></div>
   if (v.status === 'arrived')
-    return <div className="rounded-2xl bg-safe/15 p-4 ring-1 ring-safe" role="status"><p className="text-lg font-semibold">{v.walker_name} reached safely at {time(v.ended_utc)}.</p><p className="text-sm text-ink-300">Location sharing has stopped.</p></div>
+    return <div className="rounded-2xl bg-safe/15 p-4 ring-1 ring-safe" role="status"><p className="text-lg font-semibold">{v.walker_name}'s phone reached the destination at {time(v.ended_utc)}.</p><p className="text-sm text-ink-300">The walk ended and location sharing has stopped. If anything seems wrong, call {v.walker_name}.</p></div>
   if (v.status === 'expired')
     return <div className="rounded-2xl bg-ink-800 p-4" role="status"><p className="font-semibold">This walk was closed automatically.</p><p className="text-sm text-ink-300">Location sharing has stopped. If you are worried, call {v.walker_name}.</p></div>
   if (v.status === 'ended')

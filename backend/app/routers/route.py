@@ -33,6 +33,9 @@ class RouteRequest(BaseModel):
     end: Point
     at: str | None = None  # India time of the walk, e.g. 2026-10-30T23:30; missing = now
     city: str | None = None  # demo city; default: the default city
+    # False for automatic re-plans of a route the walker already asked for (time changed, scores refreshed): the repair
+    # ranking counts each walker's planned route once, not every refresh. The route itself is the same either way.
+    count: bool = True
 
 
 def summarise(steps: list[Step], scores: dict[int, StreetScore], streets: dict[int, models.Street], places: list[PlaceAt]) -> dict:
@@ -123,7 +126,8 @@ def suggested_street_ids(result: dict) -> set[int]:
 def route(req: RouteRequest, db: Session = Depends(get_db)):
     """A route request the walker made: plan it, then count it once as "planned" (only when planning succeeded)."""
     result = plan_routes(req, db)
-    save_route_use(db, suggested_street_ids(result), "planned")
+    if req.count:
+        save_route_use(db, suggested_street_ids(result), "planned")
     return result
 
 

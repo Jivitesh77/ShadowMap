@@ -15,10 +15,10 @@ Specification: [BLUEPRINT.md](BLUEPRINT.md) · Progress: [docs/SPRINT_STATUS.md]
 | Street safety scores, shortest vs safest route (Dijkstra), comparison | Working, tested |
 | Community reports (change scores and routes), nearest help point | Working, tested |
 | Route briefing EN/HI + read aloud | Working as a **data summary**; the Gemini-written version is tested only with simulated answers (no key yet) |
-| Sentinel live photos + video mode (FFmpeg, background queue) | Working with generated test clips; **owner's night videos not yet run**; live camera not yet tried on a real phone |
+| Sentinel live photos + video mode (FFmpeg, background queue) | Working with generated test clips; **owner's night videos not yet run**; live camera not yet tried on a real phone. Without FFmpeg the server says "video mode unavailable" (503) and everything else keeps working; without a Gemini key the page says photos stay blurred and private |
 | Gemini photo analysis, face/plate blurring, photo display (M6) | Built: local blurring (YuNet + Haar), Gemini analysis of blurred copies, fail-closed approval, 6-h deletion. Tested with synthetic images and simulated Gemini only; needs a Gemini key and real night photos. See [docs/PHOTO_PRIVACY.md](docs/PHOTO_PRIVACY.md) |
 | Walk With Me (stop / off-route / late / battery → Are you safe? → contacts → police; PIN, duress PIN, SOS, help bar, Where am I; end & stop sharing, revoke link) | **Implemented and tested** in the backend (lifecycle, escalation, access control, revocation/expiry, GPS accuracy, duplicate alerts, PIN lock-out, deletion) incl. the live background clock. **Police: implemented but simulated.** **Needs real Android/iPhone testing** (GPS, screen sleep, background) |
-| Contact trip page, police dashboard (simulated), city dashboard + CSV | Working, smoke-tested in the production build |
+| Contact trip page, police dashboard (simulated), city dashboard + CSV | Working; browser smoke test (`frontend/e2e/smoke.mjs`, 38 checks incl. 360/390/768/1440 px layouts) on the production build. **Not tried on real phones / Safari** |
 | Automatic deletion (photos 6 h, uploaded videos 6 h, walk personal data 24 h after the walk, report device ids and positions after 30 days — see below) | Working, tested |
 
 ## Run it on your laptop
@@ -59,7 +59,8 @@ Full lists with comments: [backend/.env.example](backend/.env.example) and [fron
 | `DEMO_MODE` | backend | `true`: shortened walk timers; help-call buttons ring `DEMO_CALL_NUMBER`, **never** 112/181/100. |
 | `API_DOCS` | backend | Automatic API pages `/docs`, `/redoc`, `/openapi.json`. Empty = on (local); `false` when hosted (`render.yaml`). |
 | `LOG_LEVEL` | backend | `INFO` (default), `DEBUG` or `WARNING`; warnings and errors always show. Logs never contain trip-link ids, names, phones or positions. |
-| `RATE_LIMIT_*_PER_MIN` | backend | Requests per minute per client: route 30, help point 30, walk start 5, briefing 10 (`0` = off). Over a limit: 429 + `Retry-After`. Details: docs/DEPLOYMENT.md. |
+| `RATE_LIMIT_*` | backend | Requests per client: route 30, help point 30, walk start 5, briefing 10, map 240, where-am-I 120 per minute; reports 120 per hour per connection (plus 5 per hour per device). `0` = off. Over a limit: 429 + `Retry-After`. Details: docs/DEPLOYMENT.md. |
+| `FFMPEG_BIN`, `FFPROBE_BIN` | backend | Video tools (default: found on `PATH`). Missing → video mode answers 503; the rest of the app works. |
 | `TRUSTED_PROXY_HOPS` | backend | `0` locally (ignore `X-Forwarded-For`); `1` on Render. |
 | `DEMO_CALL_NUMBER` | backend | A team member's phone for demo help calls. Empty = buttons dial nothing. |
 | `SENTINEL_ENFORCE_NIGHT`, `SENTINEL_ENFORCE_MOVING` | backend | Blueprint capture rules, enforced by the server. `false` only while testing in daytime / on foot. |
@@ -141,6 +142,18 @@ Automated tests check these rules on a test database; they do not by themselves 
 ## Tests
 
 ```bash
-cd ~/Projects/shadowmap/backend && .venv/bin/pytest      # 286 automated tests
+cd ~/Projects/shadowmap/backend && .venv/bin/pytest      # 296 automated tests
 cd ~/Projects/shadowmap/frontend && npm run build        # type-check + production build
+```
+
+Browser smoke test (no extra packages; uses the installed Chrome). Run it only against a **test copy** — it creates a simulated walk:
+
+```
+# terminal 1: a test copy of the database on port 8001
+cd ~/Projects/shadowmap/backend && mkdir -p /tmp/sm-test/data && sqlite3 data/shadowmap.db ".backup '/tmp/sm-test/data/shadowmap.db'"
+DATABASE_URL=sqlite:////tmp/sm-test/data/shadowmap.db DATA_DIR=/tmp/sm-test/data START_WORKERS=0 SENTINEL_TOKEN=smoke-code .venv/bin/uvicorn app.main:app --port 8001
+# terminal 2: production build of the frontend on port 5174
+cd ~/Projects/shadowmap/frontend && npx vite build --outDir /tmp/sm-test/dist && SM_API_TARGET=http://localhost:8001 npx vite preview --outDir /tmp/sm-test/dist --port 5174
+# terminal 3
+cd ~/Projects/shadowmap/frontend && SMOKE_BASE=http://localhost:5174 SMOKE_SENTINEL=smoke-code SMOKE_OUT=/tmp/sm-test/smoke node e2e/smoke.mjs
 ```

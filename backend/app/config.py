@@ -39,12 +39,18 @@ def _non_negative_int(name: str, default: int) -> int:
 
 
 def rate_limits_from_env() -> dict[str, int]:
-    """Requests per minute per client (agreed 2026-10-31). 0 switches a limit off."""
+    """Requests per client in each category's window (app/rate_limit.py WINDOWS_S). 0 switches a limit off.
+    Agreed 2026-10-31: route 30, help point 30, walk start 5, briefing 10 per minute. Added in the finalization and sized
+    for a demo where a whole class shares one Wi-Fi / hotspot (= one client): reports 120 per hour per connection (each
+    device still 5 per hour), map 240 per minute (a page uses ~1 per minute), where-am-I 120 per minute (a walk ~3)."""
     return {
         "route": _non_negative_int("RATE_LIMIT_ROUTE_PER_MIN", 30),
         "help_point": _non_negative_int("RATE_LIMIT_HELP_POINT_PER_MIN", 30),
         "walk_start": _non_negative_int("RATE_LIMIT_WALK_START_PER_MIN", 5),
         "briefing": _non_negative_int("RATE_LIMIT_BRIEFING_PER_MIN", 10),
+        "report": _non_negative_int("RATE_LIMIT_REPORT_PER_HOUR", 120),
+        "map": _non_negative_int("RATE_LIMIT_MAP_PER_MIN", 240),
+        "where_am_i": _non_negative_int("RATE_LIMIT_WHERE_AM_I_PER_MIN", 120),
     }
 
 
@@ -80,6 +86,10 @@ MAX_DETOUR_RATIO = 1.5
 
 # --- Sentinel photos (blueprint §5, §6) ---
 PHOTO_KEEP_HOURS = 6
+# Video tools. Default: found on PATH. A native (non-Docker) host can point these at a downloaded static build
+# (render.yaml + scripts/fetch_ffmpeg.sh). Without them video mode answers 503; everything else keeps working.
+FFMPEG_BIN = os.getenv("FFMPEG_BIN", "").strip() or "ffmpeg"
+FFPROBE_BIN = os.getenv("FFPROBE_BIN", "").strip() or "ffprobe"
 # Community reports: after this many days the device id and the tapped position are removed and the report no longer
 # counts anywhere (services/retention.py). Agreed with the owner on 2026-10-30.
 REPORT_KEEP_DAYS = 30

@@ -142,7 +142,7 @@ def test_off_route_late_battery_and_arrival(client):
 
     client.post(f"/api/walks/{wid}/position", json={"lat": END["lat"], "lon": END["lon"]}, headers=me)
     c = contact(client, wid)
-    assert c["status"] == "arrived" and "reached safely" in c["events"][-1]["text"] and c["last"] is None and c["route"] is None
+    assert c["status"] == "arrived" and "phone reached the destination" in c["events"][-1]["text"] and "safe" not in c["events"][-1]["text"].lower() and c["last"] is None and c["route"] is None
     tick(T["stop_s"] + 60)
     assert contact(client, wid)["status"] == "arrived"  # no checks after arrival
 

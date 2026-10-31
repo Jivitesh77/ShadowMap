@@ -1,3 +1,5 @@
+> **Historical document** — describes the original build plan. Current status: docs/SPRINT_STATUS.md and docs/KNOWN_ISSUES.md.
+
 # ShadowMap — Implementation Plan
 
 Budget: **36 hours of building**, then **12 hours of testing**.

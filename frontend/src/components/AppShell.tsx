@@ -63,8 +63,9 @@ function NavLink({ item, active, showLabel, onDone }: { item: NavItem; active: b
 function statusOf(health: ApiState<Health>) {
   const { data, error, loading } = health
   const online = !error && data?.status === 'ok'
-  const dot = loading && !data ? 'bg-ink-400' : online ? 'bg-safe' : 'bg-danger'
-  const label = loading && !data ? 'Connecting…' : online ? 'Server online' : 'Server offline'
+  const degraded = !error && !!data && data.status !== 'ok' // reachable, but e.g. the walk clock stopped (see /api/health)
+  const dot = loading && !data ? 'bg-ink-400' : online ? 'bg-safe' : degraded ? 'bg-caution' : 'bg-danger'
+  const label = loading && !data ? 'Connecting…' : online ? 'Server online' : degraded ? 'Server running with problems' : 'Server offline'
   return { dot, label, online }
 }
 

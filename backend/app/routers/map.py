@@ -7,7 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import models
-from app.db import get_db
+from app.db import get_db, utcnow
+from app.rate_limit import rate_limit
 from app.services.geo import haversine_m, point_to_line_m
 from app.services.places import confidence
 from app.services.scoring import StreetScore
@@ -72,6 +73,10 @@ def place_out(p: models.Place, at: datetime, center: list[float] | None, communi
     }
 
 
+# Place fields that depend on the walk time or on recent community reports (everything else is fixed per map build).
+PLACE_DYNAMIC = {"status", "status_basis", "community_report", "confidence", "confidence_reason"}
+
+
 def score_out(sc: StreetScore | None) -> dict:
     if sc is None:
         return {"score": None, "colour": None}
@@ -86,9 +91,12 @@ def score_out(sc: StreetScore | None) -> dict:
     }
 
 
-@router.get("/map")
+@router.get("/map", dependencies=[Depends(rate_limit("map"))])
 def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-30T23:30"),
-            city: str | None = Query(None, description="demo city id; default: the default city"), db: Session = Depends(get_db)):
+            city: str | None = Query(None, description="demo city id; default: the default city"),
+            view: str = Query("full", pattern="^(full|scores)$",
+                              description="full = streets with shapes + places; scores = only what changes over time"),
+            db: Session = Depends(get_db)):
     when = parse_at(at)
     city = cities.resolve(city)
     source = {**cities.map_source(city), "city": city, "centre_label": cities.centre_label(city)}
@@ -97,8 +105,23 @@ def get_map(at: str | None = Query(None, description="India time, e.g. 2026-10-3
     places = db.scalars(select(models.Place).where(models.Place.city == city)).all()
     scores = score_streets(db, when, city)
     community = latest_place_reports(db)
+    generated = utcnow().isoformat(timespec="seconds") + "Z"  # when these scores were computed (shown as data age)
+    if view == "scores":
+        # Street shapes and place details never change between map builds: the app keeps them from the full load and
+        # refreshes only scores and open / closed status (Delhi: ~3 MB -> a small fraction).
+        return {
+            "at": when.isoformat(timespec="minutes"),
+            "generated_utc": generated,
+            "city": city,
+            "view": "scores",
+            "streets": [{"id": s.id, **score_out(scores.get(s.id))} for s in streets],
+            "places": [{k: v for k, v in place_out(p, when, center, community).items() if k in PLACE_DYNAMIC} | {"id": p.id}
+                       for p in places],
+        }
     return {
         "at": when.isoformat(timespec="minutes"),
+        "generated_utc": generated,
+        "view": "full",
         "source": source,
         "streets": [
             {

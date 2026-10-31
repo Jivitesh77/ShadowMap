@@ -1,3 +1,5 @@
+> **Historical document** — describes the M5 / M7 state of 2026-10-30. Current status: docs/SPRINT_STATUS.md and docs/KNOWN_ISSUES.md.
+
 # Security and correctness audit — Sentinel live (M5) and video mode (M7)
 
 Date: 2026-10-30. Scope: `backend/app/routers/sentinel.py`, `backend/app/services/video.py`, `backend/app/services/video_jobs.py`, the Sentinel page, and how the dev servers expose them. No map, routing or M6 changes.

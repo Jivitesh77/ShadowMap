@@ -4,7 +4,7 @@ Update this file at the start and end of every milestone. "Done" requires the Do
 
 Status values: Not started · In progress · Built — real-data check pending · Done (verified) · Blocked · Cut
 
-Last updated: 2026-10-31 — M0–M11 built; M6, Walk With Me completion and the second demo city (Delhi) were committed in `c62e224`. Tasks 1–8 (below) are the current uncommitted changes; 286 tests pass. Docker build not verified (Task 9). Needs: Gemini key, real night photos, real Android/iPhone tests, deployment. Not production-ready. Earlier log entries that call M6 "not built" describe the state at that time.
+Last updated: 2026-10-31 — M0–M11 built; Tasks 1–8 committed in `dcbf5ea`. Finalization (prototype polish) on branch `completion/shadowmap-finalization`, uncommitted; 296 backend tests pass, browser smoke test 38/38. Docker build not verified (Task 9). Needs: Gemini key, real night footage, real Android/iPhone tests, deployment. Not production-ready.
 
 | # | Milestone | Priority | Est. | Status | Evidence / notes |
 | --- | --- | --- | --- | --- | --- |
@@ -345,3 +345,24 @@ Status: **Built and verified with real OSM data. No Sentinel footage of Delhi ye
 ### 2026-10-31 — Task 9: Docker build and start-up check — NOT complete
 - Docker is installed. The local image build exhausted available system memory and was interrupted (the Docker service was stopped during the FFmpeg package download). No image was built and no container was run, so the build, start-up, health check, docs switch, model/FFmpeg and storage checks are all still unverified (KNOWN_ISSUES #55).
 - No code or Dockerfile change was made.
+
+### 2026-10-31 — Finalization for the academic prototype (branch `completion/shadowmap-finalization`; uncommitted, awaiting review)
+Scope (owner, 2026-10-31): an excellent academic prototype and live demonstration, not a production emergency platform.
+- **Map and Walker page:** shapes load once, then a light scores-only refresh (`/api/map?view=scores`) with "scores updated"
+  time; an older answer can no longer overwrite a newer one; busy categories (> 60 places) start hidden with an explanation;
+  smaller pins when > 150 are on screen (Delhi: 287 pins instead of ~1,400); "Compare routes" never re-requests; re-plans
+  are not counted (`count: false`).
+- **Honest wording:** "phone reached the destination" instead of "reached safely" (timeline + contact page); places show
+  "OpenStreetMap-listed" / "Needs review" / "ShadowMap verified"; Sentinel explains a missing Gemini key and a missing FFmpeg.
+- **Robustness:** missing FFmpeg → 503 before an upload is read, clear job errors, health check; `/api/health` reports video
+  tools, face blurring and worker threads.
+- **Abuse and load:** per-connection limits for reports (120 / hour), map (240 / min), where-am-I (120 / min) — first set to 30 / 60 / 30, raised in the final review because a class sharing one hotspot counts as one client.
+- **Security headers:** backend middleware; basic headers in `vercel.json` (no frontend CSP yet).
+- **Accessibility / layout:** arrow keys / Home / End on all tab lists; planning bar fixed at tablet width (768 px).
+- **Performance:** pages load on demand — start-up JavaScript 531 kB → 249 kB (78 kB compressed).
+- **Tests:** **296 passed** (10 new in `tests/test_finalization_backend.py`); new browser smoke test `frontend/e2e/smoke.mjs`
+  (no new packages) — **38 / 38** on the production build against a test copy, incl. 360 / 390 / 768 / 1440 px layouts.
+- **Docs:** README, ARCHITECTURE (new), DEPLOYMENT, DATA_GAPS (verification workflow), PHOTO_PRIVACY (Sentinel record
+  retention), KNOWN_ISSUES #58 #81 #97 #99 #105–#112, TESTING_CHECKLIST; historical audits marked as historical.
+- **Deferred by the owner:** native-Python / Docker deployment work, trip ids in hosting logs (#98), Sentinel device-id
+  retention change (documented only), accounts, SMS / WhatsApp, multi-instance, PostgreSQL, real police integration.

@@ -3,7 +3,8 @@
 FastAPI reads the whole upload form into a temporary buffer before the endpoint (and its access-code check) runs, so a
 size check inside the endpoint comes too late. This guard runs first, for POST /api/sentinel/videos/uploads only:
 1. no or wrong Sentinel access code -> 401 / 403 before a single byte of the video is read;
-2. announced size (Content-Length) above the limit -> 413 at once;
+2. no FFmpeg / ffprobe on this server -> 503 at once (video mode unavailable; nothing else is affected);
+   announced size (Content-Length) above the limit -> 413 at once;
 3. not enough room on the data disk (DISK_RESERVE_MB must stay free) -> 507 at once;
 4. while the bytes arrive they are counted; past the limit reading stops -> 413. The web server's buffer is closed and
    freed (Starlette closes it on MultiPartException), and the endpoint never runs, so no file is written.
@@ -58,6 +59,10 @@ class UploadGuard:
             require_access(headers.get("x-sentinel-token"))
         except HTTPException as e:
             return await send_json(send, e.status_code, e.detail)
+
+        from app.services.video import TOOLS_MISSING, TOOLS_MISSING_MESSAGE, missing_video_tools
+        if missing_video_tools():  # no point receiving a video this server cannot read
+            return await send_json(send, 503, {"code": TOOLS_MISSING, "message": TOOLS_MISSING_MESSAGE})
 
         body_limit = config.MAX_VIDEO_UPLOAD_BYTES + config.UPLOAD_FORM_OVERHEAD_BYTES
         try:

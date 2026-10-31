@@ -1,12 +1,15 @@
+import { lazy, Suspense } from 'react'
 import { AppShell } from './components/AppShell'
 import { MapPinIcon } from './components/Icons'
-import { EmptyState } from './components/States'
+import { EmptyState, LoadingBlock } from './components/States'
 import { navigate, useRoute } from './router'
-import CityPage from './pages/CityPage'
-import ContactPage from './pages/ContactPage'
-import PolicePage from './pages/PolicePage'
-import SentinelPage from './pages/SentinelPage'
-import WalkerPage from './pages/WalkerPage'
+
+// Each screen is loaded when it is first opened, so the first page appears sooner (smaller start-up download).
+const CityPage = lazy(() => import('./pages/CityPage'))
+const ContactPage = lazy(() => import('./pages/ContactPage'))
+const PolicePage = lazy(() => import('./pages/PolicePage'))
+const SentinelPage = lazy(() => import('./pages/SentinelPage'))
+const WalkerPage = lazy(() => import('./pages/WalkerPage'))
 
 export default function App() {
   const route = useRoute()
@@ -46,5 +49,9 @@ export default function App() {
       )
   }
 
-  return <AppShell active={route.name}>{page}</AppShell>
+  return (
+    <AppShell active={route.name}>
+      <Suspense fallback={<div className="mx-auto max-w-3xl pt-6"><LoadingBlock label="Loading the page…" /></div>}>{page}</Suspense>
+    </AppShell>
+  )
 }

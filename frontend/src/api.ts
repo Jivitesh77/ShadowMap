@@ -147,9 +147,19 @@ export interface MapSource {
 
 export interface MapData {
   at: string
+  generated_utc?: string // when the server computed these scores
   source: MapSource
   streets: Street[]
   places: Place[]
+}
+
+/** The light refresh: only what changes over time (scores, open / closed). Shapes and details come from MapData. */
+export interface MapScores {
+  at: string
+  generated_utc: string
+  city: string
+  streets: (Partial<Street> & { id: number })[]
+  places: (Partial<Place> & { id: number })[]
 }
 
 export interface StreetDetail {
@@ -515,14 +525,17 @@ export const api = {
   health: () => request<Health>('/api/health', undefined, 4000),
   summary: () => request<Summary>(withCity('/api/summary')),
   cities: () => request<CitiesInfo>('/api/cities'),
-  map: (at?: string) => request<MapData>(withCity(`/api/map${at ? `?at=${encodeURIComponent(at)}` : ''}`)),
-  route: (start: LatLon, end: LatLon, at?: string) =>
-    request<RouteResult>('/api/route', { method: 'POST', body: JSON.stringify({ start, end, at, city: currentCity() }) }, 20000),
+  map: (at?: string) => request<MapData>(withCity(`/api/map${at ? `?at=${encodeURIComponent(at)}` : ''}`), undefined, 30000),
+  mapScores: (at?: string) => request<MapScores>(withCity(`/api/map?view=scores${at ? `&at=${encodeURIComponent(at)}` : ''}`), undefined, 20000),
+  // count=false: an automatic re-plan of a route already asked for (repair ranking counts each planned route once)
+  route: (start: LatLon, end: LatLon, at?: string, count = true) =>
+    request<RouteResult>('/api/route', { method: 'POST', body: JSON.stringify({ start, end, at, city: currentCity(), count }) }, 20000),
   googleStatus: () => request<{ configured: boolean; attribution: string }>('/api/google-places/status'),
   googleNearby: (lat: number, lon: number, radius_m: number) =>
     request<GoogleNearby>('/api/google-places/nearby', { method: 'POST', body: JSON.stringify({ lat, lon, radius_m }) }, 15000),
   sentinelStatus: () =>
-    request<{ observations_by_analysis: Record<string, number>; ai_configured: boolean; ai_note: string | null }>('/api/sentinel/status'),
+    request<{ observations_by_analysis: Record<string, number>; ai_configured: boolean; ai_note: string | null;
+      video_available?: boolean; video_note?: string | null }>('/api/sentinel/status'),
   livePhoto: (form: FormData) => requestForm<LivePhotoResult>('/api/sentinel/photo', form, 20000),
   assetVideos: () =>
     request<{ folder: string; videos: { name: string; size_bytes: number; supported: boolean }[] }>('/api/sentinel/videos/assets', {

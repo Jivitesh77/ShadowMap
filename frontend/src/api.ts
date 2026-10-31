@@ -3,9 +3,10 @@ import { currentCity, withCity } from './lib/city'
 import { isAccessRefusal } from './lib/accessCodes'
 import { accessHeaders, setAccessCode } from './lib/sentinelAccess'
 
-// Backend address. Empty in development (Vite forwards /api to port 8000). In production set VITE_API_BASE,
+// Backend address. Empty = same site (development: Vite forwards /api to port 8000; one-container hosting: the backend
+// serves this app). Only for a separate backend set VITE_API_BASE_URL (older name: VITE_API_BASE),
 // e.g. https://shadowmap-backend.onrender.com, and allow the frontend's address in the backend's CORS_ORIGINS.
-export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
 // Addresses are relative (/api/...): in development Vite forwards them to the backend on port 8000.
 
 export interface Health {

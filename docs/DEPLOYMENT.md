@@ -159,3 +159,12 @@ sqlite3 ~/shadowmap-backups/<file>.db "SELECT city, COUNT(*) FROM streets GROUP 
 ## Not checked
 
 - `docker build` of the image, Render itself, Vercel itself, real https on phones, upload size limits of the hosts (very large videos may need to be trimmed or uploaded on the laptop).
+
+## Hugging Face Spaces (one container, added 2026-10-31)
+
+`Dockerfile` in the project root builds the React app (Node 20) and runs the backend (Python 3.12, FFmpeg) in **one**
+container on port 7860. The backend serves the built app from `FRONTEND_DIST` after all API routes; unknown `/api/...`
+addresses stay JSON 404s. The database is **built fresh from `assets/demo-data`** inside the image — the laptop's
+`backend/data/shadowmap.db` (walks, contacts, alerts) is never uploaded. Space data is lost on every restart/rebuild.
+Secrets (`GEMINI_API_KEY`, optionally `SENTINEL_TOKEN`, `POLICE_TOKEN`) are set as **Space secrets**, never in files.
+Without `SENTINEL_TOKEN` / `POLICE_TOKEN` the Sentinel writes and the police dashboard stay locked (safe default).

@@ -110,6 +110,9 @@ DATA_DIR = Path(os.getenv("DATA_DIR", str(BACKEND_DIR / "data")))
 PHOTO_DIR = DATA_DIR / "photos"  # all Sentinel images (git-ignored; deleted after PHOTO_KEEP_HOURS)
 VIDEO_DIR = DATA_DIR / "videos"  # uploaded videos (assets/videos is only read, never changed)
 ASSET_VIDEO_DIR = BACKEND_DIR.parent / "assets" / "videos"
+# One-container hosting (Dockerfile at the project root): folder with the built React app (frontend/dist), served by
+# the backend after all API routes. Empty = off (local development uses Vite on port 5173).
+FRONTEND_DIST = Path(os.environ["FRONTEND_DIST"]) if os.getenv("FRONTEND_DIST", "").strip() else None
 START_WORKERS = _bool("START_WORKERS", True)  # background video queue; tests turn it off and run jobs directly
 LIVE_MAX_GPS_ACCURACY_M = 50  # ignore readings with poorer accuracy (blueprint §20)
 LIVE_DUPLICATE_RADIUS_M = 30  # blueprint §5: no new photo within ~30 m of the last one

@@ -2,8 +2,9 @@
 **/.env
 **/*.env
 **/.venv
+**/node_modules
 backend/data
-frontend
+frontend/dist
 assets/videos
 assets/images
 .git

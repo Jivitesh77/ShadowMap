@@ -2,8 +2,9 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -64,12 +65,6 @@ app.include_router(dashboards_router.router)
 app.include_router(photos_router.router)
 
 
-@app.get("/")
-def root():
-    """The backend has no screens. Point people who open it in a browser to the app."""
-    return {"message": "ShadowMap backend is running. Open the app at http://localhost:5173"}
-
-
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)):
     """Is the server up and can it reach the database? Never returns secret values."""
@@ -124,3 +119,21 @@ def summary(city: str | None = None, db: Session = Depends(get_db)):
         select(func.count()).select_from(models.Alert).where(models.Alert.status != "resolved")
     )
     return counts
+
+
+# Registered after every API route, so /api/... always wins. Only active with FRONTEND_DIST set (one-container hosting).
+@app.get("/{path:path}", include_in_schema=False)
+def frontend(path: str):
+    """Serves the built React app: a real file from frontend/dist, otherwise index.html (the app picks the page)."""
+    dist = config.FRONTEND_DIST
+    if dist is None:
+        if path == "":  # local development: the backend has no screens, point people to the app
+            return {"message": "ShadowMap backend is running. Open the app at http://localhost:5173"}
+        raise HTTPException(status_code=404)
+    if path.startswith(("api/", "ws")) or path == "api":
+        raise HTTPException(status_code=404)  # unknown API addresses stay JSON errors, never the app page
+    root = dist.resolve()
+    file = (root / path).resolve()
+    if path and file.is_file() and file.is_relative_to(root):  # never outside the dist folder
+        return FileResponse(file)
+    return FileResponse(root / "index.html")

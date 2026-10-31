@@ -6,6 +6,8 @@ run scripts or use the camera / location itself — the frontend does that from 
 - Content-Security-Policy: nothing may load from API responses; the automatic API pages (/docs, /redoc), which load
   their own scripts, are left out (they are switched off when hosted: API_DOCS=false).
 - Strict-Transport-Security only when the request arrived over https (behind a proxy: X-Forwarded-Proto).
+- App pages (one-container hosting: everything outside /api and /ws) get the frontend's headers instead: camera and
+  location for this site only, and framing only by this site and the Hugging Face Space page that shows the app.
 """
 
 DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
@@ -16,6 +18,13 @@ BASE = [
     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
 ]
 CSP = (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'")
+API_PATHS = ("/api", "/ws")
+PAGE = [
+    (b"x-content-type-options", b"nosniff"),
+    (b"referrer-policy", b"no-referrer"),
+    (b"permissions-policy", b"camera=(self), geolocation=(self), microphone=(), payment=(), usb=()"),
+    (b"content-security-policy", b"frame-ancestors 'self' https://huggingface.co"),
+]
 HSTS = (b"strict-transport-security", b"max-age=31536000")
 
 
@@ -29,7 +38,11 @@ class SecurityHeaders:
         path = scope.get("path", "")
         headers = dict(scope.get("headers", []))
         https = scope.get("scheme") == "https" or headers.get(b"x-forwarded-proto", b"").split(b",")[0].strip() == b"https"
-        extra = BASE + ([] if path.startswith(DOCS_PATHS) else [CSP]) + ([HSTS] if https else [])
+        if path.startswith(API_PATHS) or path.startswith(DOCS_PATHS):
+            extra = BASE + ([] if path.startswith(DOCS_PATHS) else [CSP])
+        else:
+            extra = PAGE
+        extra = extra + ([HSTS] if https else [])
 
         async def with_headers(message):
             if message["type"] == "http.response.start":

@@ -3,7 +3,7 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { useEffect } from 'react'
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
-import { tileProvider } from '../lib/mapProvider'
+import { tileProvider, tileReferrerPolicy } from '../lib/mapProvider'
 
 const dot = (cls: string, label = '') =>
   L.divIcon({ className: '', html: `<div class="${cls}">${label}</div>`, iconSize: [24, 24], iconAnchor: [12, 12] })
@@ -35,7 +35,7 @@ export function LiveMap({
   const center = live ?? route?.[0] ?? dest ?? [26.0804, 91.5605]
   return (
     <MapContainer center={center} zoom={16} className="h-full w-full">
-      <TileLayer className="sm-tiles" url={tileProvider.url} attribution={tileProvider.attribution} maxZoom={19} />
+      <TileLayer className="sm-tiles" url={tileProvider.url} attribution={tileProvider.attribution} maxZoom={19} referrerPolicy={tileReferrerPolicy} />
       <Follow target={live} route={route} />
       {route && (
         <>

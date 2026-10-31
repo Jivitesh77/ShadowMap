@@ -4,7 +4,7 @@ import L from 'leaflet'
 import { useEffect } from 'react'
 import { MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import type { MapData } from '../api'
-import { tileProvider } from '../lib/mapProvider'
+import { tileProvider, tileReferrerPolicy } from '../lib/mapProvider'
 
 function pointIcon(n: number) {
   return L.divIcon({ className: '', html: `<div class="sm-endpoint">${n}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] })
@@ -37,7 +37,7 @@ export function TraceMap({
 }) {
   return (
     <MapContainer center={data.source.area?.center ?? [26.0804, 91.5605]} zoom={15} className="h-full w-full sm-picking">
-      <TileLayer className="sm-tiles" url={tileProvider.url} attribution={tileProvider.attribution} maxZoom={19} />
+      <TileLayer className="sm-tiles" url={tileProvider.url} attribution={tileProvider.attribution} maxZoom={19} referrerPolicy={tileReferrerPolicy} />
       <Fit data={data} />
       <Clicks onAdd={onAdd} />
       {data.streets.map((s) => (

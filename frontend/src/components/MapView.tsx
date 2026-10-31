@@ -5,7 +5,7 @@ import { useEffect, useMemo } from 'react'
 import { MapContainer, Marker, Polyline, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import type { LatLon, MapSource, Place, RouteResult, Street } from '../api'
 import { ROAD_CLASS, SAFETY_COLOURS, categoryMeta, formatAge, placeName, ROUTE_COLOURS } from '../lib/mapMeta'
-import { tileProvider } from '../lib/mapProvider'
+import { tileProvider, tileReferrerPolicy } from '../lib/mapProvider'
 
 export type Selection = { kind: 'street'; id: number } | { kind: 'place'; id: number } | null
 
@@ -126,9 +126,7 @@ export function MapView({
         url={tileProvider.url}
         attribution={tileProvider.attribution}
         maxZoom={19}
-        // OpenStreetMap refuses tiles without a Referer; the page itself sends none (no-referrer), so the tiles send
-        // only the site's address (never the page path, which can hold a trip link).
-        referrerPolicy="strict-origin"
+        referrerPolicy={tileReferrerPolicy}
       />
       <FitArea source={source} />
       <ExposeForTests />
